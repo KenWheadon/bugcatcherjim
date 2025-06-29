@@ -52,6 +52,13 @@ class JimGame {
     this.createSparkle(this.jimImage.getBoundingClientRect());
   }
 
+  // Helper method to prevent Jim clicking during button phases
+  preventJimClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    return false;
+  };
+
   // Helper function to keep positions within screen bounds
   keepWithinBounds(x, y, elementWidth, elementHeight) {
     const margin = 20;
@@ -68,9 +75,10 @@ class JimGame {
     e.preventDefault();
     e.stopPropagation();
 
-    // Don't allow clicking Jim during button phases (29-31)
+    // Absolutely prevent clicking Jim during button phases (29-31)
     if (this.currentJim >= 29 && this.currentJim <= 31) {
-      return;
+      console.log("Jim clicking blocked during button phase");
+      return false;
     }
 
     const now = Date.now();
@@ -229,8 +237,15 @@ class JimGame {
     this.jimImage.style.display = "";
 
     // Re-enable Jim clicking EXCEPT during button phases (29-31)
-    if (this.currentJim < 29 || this.currentJim > 31) {
+    if (this.currentJim >= 29 && this.currentJim <= 31) {
+      this.jimImage.style.pointerEvents = "none";
+      this.jimImage.style.cursor = "default";
+    } else {
       this.jimImage.style.pointerEvents = "auto";
+      this.jimImage.style.cursor = "pointer";
+      // Remove any lingering event listeners from button phases
+      this.jimImage.removeEventListener("click", this.preventJimClick);
+      this.jimImage.removeEventListener("mousedown", this.preventJimClick);
     }
 
     // Add personality-based animations
@@ -560,7 +575,7 @@ class JimGame {
     this.comboCounter.style.display = "none";
 
     const finishBtn = document.getElementById("finish-btn");
-    const goldCounter = document.getElementById("gold-counter");
+    const goldCounter = document.getElementById("gold-counter-above-jim");
     if (finishBtn) finishBtn.remove();
     if (goldCounter) goldCounter.remove();
 
@@ -725,10 +740,106 @@ class JimGame {
   }
 
   startGoldPhase() {
-    this.createGoldCounter();
+    // Skip the automatic gold phase - go directly to finish button phase
     this.currentJim = 29;
     this.updateDisplay();
     this.updateProgressBar();
+  }
+
+  createGoldCounterAboveJim() {
+    // Remove any existing gold counter
+    this.removeGoldCounter();
+
+    const goldCounter = document.createElement("div");
+    goldCounter.id = "gold-counter-above-jim";
+    goldCounter.classList.add("gold-counter");
+    goldCounter.textContent = `💰 ${this.goldEarned}/${GAME_CONFIG.UI.GOLD_TARGET}`;
+
+    // Position it relative to Jim's container
+    const jimContainer = document.querySelector(".jim-container");
+    jimContainer.appendChild(goldCounter);
+  }
+
+  updateGoldCounter() {
+    const goldCounter = document.getElementById("gold-counter-above-jim");
+    if (goldCounter) {
+      goldCounter.textContent = `💰 ${this.goldEarned}/${GAME_CONFIG.UI.GOLD_TARGET}`;
+      goldCounter.classList.add("gold-counter-update");
+
+      // Remove animation class after animation completes
+      setTimeout(() => {
+        goldCounter.classList.remove("gold-counter-update");
+      }, 800);
+    }
+  }
+
+  removeGoldCounter() {
+    const goldCounter = document.getElementById("gold-counter-above-jim");
+    if (goldCounter) {
+      goldCounter.style.transition = "opacity 0.5s ease-out";
+      goldCounter.style.opacity = "0";
+      setTimeout(() => goldCounter.remove(), 500);
+    }
+  }
+
+  awardGold(clickX, clickY) {
+    this.goldEarned++;
+
+    // Create animated coin at click position
+    const coin = document.createElement("div");
+    coin.classList.add("animated-coin");
+    coin.textContent = "💰";
+    coin.style.left = clickX - 20 + "px";
+    coin.style.top = clickY - 20 + "px";
+
+    document.body.appendChild(coin);
+
+    // After coin appears, animate it to the counter
+    setTimeout(() => {
+      const goldCounter = document.getElementById("gold-counter-above-jim");
+      if (goldCounter) {
+        const counterRect = goldCounter.getBoundingClientRect();
+        const targetX = counterRect.left + counterRect.width / 2 - 20;
+        const targetY = counterRect.top + counterRect.height / 2 - 20;
+
+        // Calculate the path to counter
+        coin.style.setProperty("--target-x", targetX + "px");
+        coin.style.setProperty("--target-y", targetY + "px");
+        coin.classList.add("coin-fly-animation");
+
+        // Custom animation to fly to counter
+        coin.animate(
+          [
+            {
+              left: coin.style.left,
+              top: coin.style.top,
+              transform: "scale(1) rotate(0deg)",
+              opacity: 1,
+            },
+            {
+              left: targetX + "px",
+              top: targetY + "px",
+              transform: "scale(0.3) rotate(1080deg)",
+              opacity: 0,
+            },
+          ],
+          {
+            duration: 1500,
+            easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+          }
+        );
+
+        // Update counter after coin starts flying
+        setTimeout(() => {
+          this.updateGoldCounter();
+        }, 200);
+
+        // Remove coin after animation
+        setTimeout(() => {
+          coin.remove();
+        }, 1500);
+      }
+    }, 500);
   }
 
   createGoldCounter() {
@@ -758,65 +869,97 @@ class JimGame {
   }
 
   startFinishButtonPhase() {
-    // Jim should be visible but not clickable during button phases
+    // Reset gold counter for this phase
+    this.goldEarned = 0;
+
+    // Jim should be visible but completely non-clickable during button phases
     this.jimImage.style.pointerEvents = "none";
+    this.jimImage.style.cursor = "default";
 
-    const finishBtn = document.createElement("button");
+    // Create gold counter above Jim
+    this.createGoldCounterAboveJim();
+
+    const finishBtn = document.createElement("img");
     finishBtn.id = "finish-btn";
-    finishBtn.textContent = "FINISH GAME";
-    finishBtn.style.position = "fixed";
-    finishBtn.style.bottom = "50px";
-    finishBtn.style.left = "50%";
-    finishBtn.style.transform = "translateX(-50%)";
-    finishBtn.style.padding = "15px 30px";
-    finishBtn.style.fontSize = "1.3em";
-    finishBtn.style.fontWeight = "bold";
-    finishBtn.style.background = "linear-gradient(135deg, #ff6b6b, #ee5a24)";
-    finishBtn.style.color = "white";
-    finishBtn.style.border = "none";
-    finishBtn.style.borderRadius = "10px";
-    finishBtn.style.cursor = "pointer";
-    finishBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
-    finishBtn.style.zIndex = "1000";
+    finishBtn.src = "finish.png";
+    finishBtn.classList.add("floating-button");
 
-    finishBtn.addEventListener("click", () => {
-      finishBtn.remove();
-      this.currentJim = 30;
-      this.updateDisplay();
-      this.updateProgressBar();
+    // Position button randomly within safe bounds
+    const safeMargin = 100;
+    const startX =
+      safeMargin + Math.random() * (window.innerWidth - safeMargin * 2 - 120);
+    const startY =
+      safeMargin + Math.random() * (window.innerHeight - safeMargin * 2 - 60);
+
+    finishBtn.style.left = startX + "px";
+    finishBtn.style.top = startY + "px";
+    finishBtn.draggable = false;
+
+    finishBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Award gold and create coin animation
+      this.awardGold(e.clientX, e.clientY);
+
+      // Check if we have enough gold to advance
+      if (this.goldEarned >= GAME_CONFIG.UI.GOLD_TARGET) {
+        finishBtn.classList.add("clicked");
+
+        setTimeout(() => {
+          finishBtn.remove();
+          this.removeGoldCounter();
+          this.currentJim = 30;
+          this.updateDisplay();
+          this.updateProgressBar();
+        }, 1000);
+      }
     });
+
+    // Prevent any interaction with Jim during this phase
+    this.jimImage.addEventListener("click", this.preventJimClick);
+    this.jimImage.addEventListener("mousedown", this.preventJimClick);
 
     document.body.appendChild(finishBtn);
   }
 
   startLoseButtonPhase() {
-    // Jim should be visible but not clickable during button phases
+    // Jim should be visible but completely non-clickable during button phases
     this.jimImage.style.pointerEvents = "none";
+    this.jimImage.style.cursor = "default";
 
-    const loseBtn = document.createElement("button");
+    const loseBtn = document.createElement("img");
     loseBtn.id = "lose-btn";
-    loseBtn.textContent = "LOSE";
-    loseBtn.style.position = "fixed";
-    loseBtn.style.bottom = "50px";
-    loseBtn.style.left = "50%";
-    loseBtn.style.transform = "translateX(-50%)";
-    loseBtn.style.padding = "15px 30px";
-    loseBtn.style.fontSize = "1.3em";
-    loseBtn.style.fontWeight = "bold";
-    loseBtn.style.background = "linear-gradient(135deg, #666, #333)";
-    loseBtn.style.color = "white";
-    loseBtn.style.border = "none";
-    loseBtn.style.borderRadius = "10px";
-    loseBtn.style.cursor = "pointer";
-    loseBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
-    loseBtn.style.zIndex = "1000";
+    loseBtn.src = "lose.png";
+    loseBtn.classList.add("floating-button");
 
-    loseBtn.addEventListener("click", () => {
-      loseBtn.remove();
-      this.currentJim = 31;
-      this.updateDisplay();
-      this.updateProgressBar();
+    // Position button randomly within safe bounds
+    const safeMargin = 100;
+    const startX =
+      safeMargin + Math.random() * (window.innerWidth - safeMargin * 2 - 120);
+    const startY =
+      safeMargin + Math.random() * (window.innerHeight - safeMargin * 2 - 60);
+
+    loseBtn.style.left = startX + "px";
+    loseBtn.style.top = startY + "px";
+    loseBtn.draggable = false;
+
+    loseBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      loseBtn.classList.add("clicked");
+
+      setTimeout(() => {
+        loseBtn.remove();
+        this.currentJim = 31;
+        this.updateDisplay();
+        this.updateProgressBar();
+      }, 400);
     });
+
+    // Prevent any interaction with Jim during this phase
+    this.jimImage.addEventListener("click", this.preventJimClick);
+    this.jimImage.addEventListener("mousedown", this.preventJimClick);
 
     document.body.appendChild(loseBtn);
   }
@@ -825,8 +968,11 @@ class JimGame {
     // Hide Jim initially
     this.jimImage.style.display = "none";
 
-    // Re-enable Jim clicking for after cup game
+    // Re-enable Jim clicking for after cup game - remove any lingering prevention
     this.jimImage.style.pointerEvents = "auto";
+    this.jimImage.style.cursor = "pointer";
+    this.jimImage.removeEventListener("click", this.preventJimClick);
+    this.jimImage.removeEventListener("mousedown", this.preventJimClick);
 
     this.cupGame.gameActive = false; // Start with cups non-clickable
     this.cupGame.cups = [];
@@ -1033,7 +1179,7 @@ class JimGame {
     // Clean up any remaining elements
     const finishBtn = document.getElementById("finish-btn");
     const loseBtn = document.getElementById("lose-btn");
-    const goldCounter = document.getElementById("gold-counter");
+    const goldCounter = document.getElementById("gold-counter-above-jim");
     if (finishBtn) finishBtn.remove();
     if (loseBtn) loseBtn.remove();
     if (goldCounter) goldCounter.remove();
