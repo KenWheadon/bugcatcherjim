@@ -526,6 +526,7 @@ const Game = {
   startNightPhase: () => {
     // Check if player is carrying a bug (instant death)
     if (Game.state.player.carrying) {
+      // Immediate death screen - no delay for night death
       Game.gameOver("night-death");
       return;
     }
@@ -716,10 +717,16 @@ const Game = {
     // Track death achievement
     AchievementManager.trackDeath(reason);
 
-    // Show ending screen
-    setTimeout(() => {
+    // Show ending screen - immediate for night death, delayed for others
+    if (reason === "night-death") {
+      // Immediate transition for night death to remove the pause
       EndingScreen.init(Game.state, reason);
-    }, CONFIG.TIME.RESPONSE_TIME);
+    } else {
+      // Small delay for other death types for dramatic effect
+      setTimeout(() => {
+        EndingScreen.init(Game.state, reason);
+      }, CONFIG.TIME.RESPONSE_TIME);
+    }
   },
 
   // Render order popup
@@ -1002,10 +1009,10 @@ const Game = {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Player image or emoji
+    // Player image or emoji - using jim_1 key
     UTILS.drawImageOrEmoji(
       ctx,
-      "jim_player",
+      "jim_1",
       "👨",
       playerX,
       playerY,
@@ -1066,9 +1073,7 @@ const Game = {
     const carryingDisplay = document.getElementById("carrying-display");
     if (carryingDisplay) {
       carryingDisplay.textContent = Game.state.player.carrying
-        ? `${Game.state.player.carrying.name} ${
-            CONFIG.BUG_TYPES[Game.state.player.carrying.type].symbol
-          }`
+        ? `${Game.state.player.carrying.name}` // Removed emoji
         : "None";
     }
 
@@ -1078,7 +1083,7 @@ const Game = {
       const orderText = OrderGenerator.getOrderDisplayText(
         Game.state.currentOrder
       );
-      orderDisplay.innerHTML = orderText.needed;
+      orderDisplay.innerHTML = orderText.needed; // Using text without emojis
     }
 
     // Update phase timer

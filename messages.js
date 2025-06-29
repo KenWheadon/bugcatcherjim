@@ -114,36 +114,46 @@ const OrderGenerator = {
     return true;
   },
 
-  // Get order display text
+  // Get order display text with image support
   getOrderDisplayText: (order) => {
     if (!order) return "No active order";
 
     const neededText = order.bugs
-      .map(
-        (bugIndex) =>
-          `${CONFIG.BUG_TYPES[bugIndex].name} ${CONFIG.BUG_TYPES[bugIndex].symbol}`
-      )
+      .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
+      .join(", ");
+
+    const neededHTML = order.bugs
+      .map((bugIndex) => {
+        const bugType = CONFIG.BUG_TYPES[bugIndex];
+        return `<span class="bug-item">${bugType.name}</span>`;
+      })
       .join(", ");
 
     const collectedText =
       order.collected.length > 0
         ? order.collected
-            .map(
-              (bugIndex) =>
-                `${CONFIG.BUG_TYPES[bugIndex].name} ${CONFIG.BUG_TYPES[bugIndex].symbol}`
-            )
+            .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
+            .join(", ")
+        : "";
+
+    const collectedHTML =
+      order.collected.length > 0
+        ? order.collected
+            .map((bugIndex) => {
+              const bugType = CONFIG.BUG_TYPES[bugIndex];
+              return `<span class="bug-item">${bugType.name}</span>`;
+            })
             .join(", ")
         : "";
 
     return {
       needed: neededText,
+      neededHTML: neededHTML,
       collected: collectedText,
+      collectedHTML: collectedHTML,
       remaining: order.bugs
         .filter((bugType) => !order.collected.includes(bugType))
-        .map(
-          (bugIndex) =>
-            `${CONFIG.BUG_TYPES[bugIndex].name} ${CONFIG.BUG_TYPES[bugIndex].symbol}`
-        )
+        .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
         .join(", "),
     };
   },

@@ -13,7 +13,7 @@ const CONFIG = {
 
   // Player settings
   PLAYER: {
-    SIZE: 40, // Increased from 15
+    SIZE: 80, // Doubled from 40
     SPEED: 4, // Slightly increased
     START_X: 1200, // Center of larger world
     START_Y: 900, // Center of larger world
@@ -22,7 +22,7 @@ const CONFIG = {
   // Bug settings
   BUGS: {
     COUNT: 6,
-    SIZE: 30, // Increased from 12
+    SIZE: 60, // Doubled from 30
     MAX_SPEED: 2,
     SPAWN_MARGIN: 100,
   },
@@ -68,7 +68,7 @@ const CONFIG = {
 
     // Game element images
     COLLECTION_BIN: "images/collection-bin.png",
-    JIM_PLAYER: "images/jim-player.png",
+    JIM_PLAYER: "images/jim-1.png", // Updated to use jim-1.png
     MONSTER: "images/monster.png",
 
     // UI icons
@@ -393,7 +393,7 @@ const UTILS = {
       // Game element images
       imagesToLoad.push(
         { key: "collection_bin", src: CONFIG.IMAGES.COLLECTION_BIN },
-        { key: "jim_player", src: CONFIG.IMAGES.JIM_PLAYER },
+        { key: "jim_1", src: CONFIG.IMAGES.JIM_PLAYER }, // Updated key name
         { key: "monster", src: CONFIG.IMAGES.MONSTER },
         { key: "bug_icon", src: CONFIG.IMAGES.BUG_ICON },
         { key: "trophy_icon", src: CONFIG.IMAGES.TROPHY_ICON },
