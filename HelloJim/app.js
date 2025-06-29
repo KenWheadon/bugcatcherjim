@@ -1,3 +1,103 @@
+// Audio Management System
+class AudioManager {
+  constructor() {
+    this.sounds = {};
+    this.backgroundMusic = null;
+    this.isMuted = false;
+    this.volume = 0.7;
+
+    // Load all available sounds
+    this.loadSounds();
+  }
+
+  loadSounds() {
+    const soundFiles = [
+      "ui_hover_sound",
+      "hitting_tin_or_plastic",
+      "med_punch",
+      "ui_button_click",
+      "bubble_pop",
+      "small_failure",
+      "human_hurt_sound",
+      "slap",
+      "bing-bing",
+      "boost",
+      "success",
+      "heavy_punch",
+      "winning_trumpets_fanfair",
+      "da-da-da-ding",
+      "light-sparkle",
+      "woosh",
+      "med_sparkle",
+      "up-down-jingle",
+      "happy-charms",
+    ];
+
+    soundFiles.forEach((soundName) => {
+      const audio = new Audio(`audio/${soundName}.mp3`);
+      audio.volume = this.volume;
+      audio.preload = "auto";
+      this.sounds[soundName] = audio;
+    });
+
+    // Load background music separately
+    this.backgroundMusic = new Audio("audio/background-music.mp3");
+    this.backgroundMusic.volume = 0.3;
+    this.backgroundMusic.loop = true;
+    this.backgroundMusic.preload = "auto";
+  }
+
+  playSound(soundName, volume = null) {
+    if (this.isMuted) return;
+
+    const sound = this.sounds[soundName];
+    if (sound) {
+      sound.currentTime = 0; // Reset to beginning
+      if (volume !== null) {
+        sound.volume = volume;
+      }
+      sound.play().catch((e) => {
+        // Handle autoplay restrictions gracefully
+        console.log(`Could not play ${soundName}:`, e.message);
+      });
+    }
+  }
+
+  startBackgroundMusic() {
+    if (this.isMuted || !this.backgroundMusic) return;
+
+    this.backgroundMusic.play().catch((e) => {
+      console.log("Could not start background music:", e.message);
+    });
+  }
+
+  stopBackgroundMusic() {
+    if (this.backgroundMusic) {
+      this.backgroundMusic.pause();
+      this.backgroundMusic.currentTime = 0;
+    }
+  }
+
+  setVolume(volume) {
+    this.volume = Math.max(0, Math.min(1, volume));
+    Object.values(this.sounds).forEach((sound) => {
+      sound.volume = this.volume;
+    });
+    if (this.backgroundMusic) {
+      this.backgroundMusic.volume = this.volume * 0.3; // Background music quieter
+    }
+  }
+
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.isMuted) {
+      this.stopBackgroundMusic();
+    } else {
+      this.startBackgroundMusic();
+    }
+  }
+}
+
 class JimGame {
   constructor() {
     this.currentJim = 1;
@@ -46,10 +146,50 @@ class JimGame {
     // Use mousedown instead of click for better responsiveness on moving elements
     this.jimImage.addEventListener("mousedown", (e) => this.handleClick(e));
 
+    // Add hover sound effects
+    this.jimImage.addEventListener("mouseenter", () => {
+      this.audioManager.playSound("ui_hover_sound", 0.4);
+    });
+
     document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
 
     // Add some initial sparkle
     this.createSparkle(this.jimImage.getBoundingClientRect());
+
+    // Start background music after user interaction
+    document.addEventListener(
+      "click",
+      () => {
+        this.audioManager.startBackgroundMusic();
+      },
+      { once: true }
+    );
+  }
+
+  playClickSound() {
+    // Different sounds for different Jim types
+    if (this.currentJim >= 11 && this.currentJim <= 17) {
+      // Beetle sounds
+      this.audioManager.playSound("hitting_tin_or_plastic", 0.7);
+    } else if (this.currentJim >= 25 && this.currentJim <= 27) {
+      // Fusion sounds
+      this.audioManager.playSound("heavy_punch", 0.6);
+    } else if (this.currentJim >= 19 && this.currentJim <= 22) {
+      // Chicken sounds
+      this.audioManager.playSound("slap", 0.5);
+    } else if (this.currentJim === 18) {
+      // Moth sound
+      this.audioManager.playSound("woosh", 0.4);
+    } else if (this.currentJim >= 6 && this.currentJim <= 7) {
+      // Invincible Jim
+      this.audioManager.playSound("boost", 0.3);
+    } else if (this.currentJim >= 3 && this.currentJim <= 5) {
+      // Hurt Jim
+      this.audioManager.playSound("human_hurt_sound", 0.4);
+    } else {
+      // Regular Jim
+      this.audioManager.playSound("med_punch", 0.5);
+    }
   }
 
   // Helper function to keep positions within screen bounds
@@ -71,10 +211,13 @@ class JimGame {
     // Special handling for button phases
     if (this.currentJim === 29) {
       // Finish button phase - award gold
+      this.audioManager.playSound("ui_button_click");
+      this.audioManager.playSound("bubble_pop", 0.6);
       this.awardGold(e.clientX, e.clientY);
 
       // Check if we have enough gold to advance
       if (this.goldEarned >= GAME_CONFIG.UI.GOLD_TARGET) {
+        this.audioManager.playSound("success");
         setTimeout(() => {
           this.removeGoldCounter();
           this.currentJim = 30;
@@ -85,6 +228,8 @@ class JimGame {
       return;
     } else if (this.currentJim === 30) {
       // Lose button phase - just advance
+      this.audioManager.playSound("ui_button_click");
+      this.audioManager.playSound("small_failure", 0.5);
       this.currentJim = 31;
       this.updateDisplay();
       this.updateProgressBar();
@@ -93,9 +238,15 @@ class JimGame {
 
     const now = Date.now();
 
+    // Play click sound based on Jim type and combo
+    this.playClickSound();
+
     // Combo system
     if (now - this.lastClickTime < 1000) {
       this.comboCount++;
+      if (this.comboCount > 2) {
+        this.audioManager.playSound("bing-bing", 0.4);
+      }
     } else {
       this.comboCount = 1;
     }
@@ -151,8 +302,10 @@ class JimGame {
       this.hp = Math.max(0, this.hp - 1);
       this.updateHPBar();
 
-      // Add damage animation
+      // Add damage animation and sound
       this.jimImage.classList.add("damaged");
+      this.audioManager.playSound("human_hurt_sound", 0.3);
+
       setTimeout(
         () => this.jimImage.classList.remove("damaged"),
         GAME_CONFIG.TIMINGS.DAMAGE_ANIMATION
@@ -182,6 +335,9 @@ class JimGame {
     this.beetleClickCount = 0; // Reset beetle click counter
     this.currentJim++;
 
+    // Play advancement sound
+    this.audioManager.playSound("success", 0.4);
+
     if (this.currentJim > this.maxJim) {
       this.startParticleShow();
       return;
@@ -189,11 +345,13 @@ class JimGame {
 
     // Special handling for new phases
     if (this.currentJim === 23) {
+      this.audioManager.playSound("da-da-da-ding");
       this.startMinionPhase();
       return;
     } else if (this.currentJim === 24) {
       // Skip the broken "Find Still Jim" phase - go directly to fusion phase
       this.currentJim = 25;
+      this.audioManager.playSound("boost");
       this.updateDisplay();
       this.updateProgressBar();
       return;
@@ -201,6 +359,7 @@ class JimGame {
       this.startGoldPhase();
       return;
     } else if (this.currentJim === 29) {
+      this.audioManager.playSound("happy-charms");
       this.startFinishButtonPhase();
       return;
     } else if (this.currentJim === 30) {
@@ -208,6 +367,7 @@ class JimGame {
       return;
     } else if (this.currentJim === 31) {
       // Brief pause, then advance to cup game
+      this.audioManager.playSound("up-down-jingle");
       setTimeout(() => {
         this.currentJim = 32;
         this.updateDisplay();
@@ -331,10 +491,17 @@ class JimGame {
       this.jimImage.classList.add("scared-jim");
     } else if (this.currentJim >= 6 && this.currentJim <= 7) {
       this.jimImage.classList.add("invincible-jim");
+      if (this.currentJim === 6) {
+        this.audioManager.playSound("boost", 0.5);
+      }
     } else if (this.currentJim === 8) {
       this.jimImage.classList.add("dead-jim");
+      this.audioManager.playSound("small_failure", 0.6);
     } else if (this.currentJim >= 11 && this.currentJim <= 17) {
       this.jimImage.classList.add("beetle-jim");
+      if (this.currentJim === 11) {
+        this.audioManager.playSound("boost", 0.7);
+      }
     }
   }
 
@@ -602,6 +769,13 @@ class JimGame {
     }
     // Reset opacity for ghost chicken phase
     this.jimImage.style.opacity = "1";
+
+    // Clear any opacity intervals that might be running
+    if (this.opacityInterval) {
+      clearInterval(this.opacityInterval);
+      this.chickenSpeed = 0;
+      this.opacityInterval = null;
+    }
   }
 
   startParticleShow() {
@@ -613,6 +787,10 @@ class JimGame {
     // Clean up any remaining gold counter
     const goldCounter = document.getElementById("gold-counter-above-jim");
     if (goldCounter) goldCounter.remove();
+
+    // Play epic victory sound
+    this.audioManager.playSound("winning_trumpets_fanfair");
+    this.audioManager.stopBackgroundMusic();
 
     this.gameContainer.classList.add("screen-shake");
 
@@ -678,6 +856,8 @@ class JimGame {
     e.stopPropagation();
     e.preventDefault();
 
+    this.audioManager.playSound("light-sparkle", 0.5);
+
     const jimFrame = minion.dataset.jimFrame;
     minion.src = `jim${jimFrame}.png`;
     minion.style.width = "60px";
@@ -688,6 +868,7 @@ class JimGame {
     this.defeatedMinions++;
 
     if (this.defeatedMinions >= GAME_CONFIG.UI.MINION_COUNT) {
+      this.audioManager.playSound("med_sparkle");
       setTimeout(() => {
         this.currentJim = 25; // Skip directly to fusion phase
         this.cleanupMinions();
@@ -766,7 +947,7 @@ class JimGame {
 
     // Phase in/out behavior
     this.isMoving = true;
-    this.moveInterval = setInterval(() => {
+    this.opacityInterval = setInterval(() => {
       this.jimImage.style.opacity =
         this.jimImage.style.opacity === "0.3" ? "1" : "0.3";
     }, 800);
@@ -815,6 +996,10 @@ class JimGame {
       goldCounter.style.opacity = "0";
       setTimeout(() => goldCounter.remove(), 500);
     }
+
+    // Clean up any remaining animated coins
+    const remainingCoins = document.querySelectorAll(".animated-coin");
+    remainingCoins.forEach((coin) => coin.remove());
   }
 
   awardGold(clickX, clickY) {
@@ -837,32 +1022,12 @@ class JimGame {
         const targetX = counterRect.left + counterRect.width / 2 - 20;
         const targetY = counterRect.top + counterRect.height / 2 - 20;
 
-        // Calculate the path to counter
-        coin.style.setProperty("--target-x", targetX + "px");
-        coin.style.setProperty("--target-y", targetY + "px");
-        coin.classList.add("coin-fly-animation");
-
-        // Custom animation to fly to counter
-        coin.animate(
-          [
-            {
-              left: coin.style.left,
-              top: coin.style.top,
-              transform: "scale(1) rotate(0deg)",
-              opacity: 1,
-            },
-            {
-              left: targetX + "px",
-              top: targetY + "px",
-              transform: "scale(0.3) rotate(1080deg)",
-              opacity: 0,
-            },
-          ],
-          {
-            duration: 1500,
-            easing: "cubic-bezier(0.25, 0.46, 0.45, 0.94)",
-          }
-        );
+        // Use CSS transition for smooth animation
+        coin.style.transition = "all 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+        coin.style.left = targetX + "px";
+        coin.style.top = targetY + "px";
+        coin.style.transform = "scale(0.3) rotate(1080deg)";
+        coin.style.opacity = "0";
 
         // Update counter after coin starts flying
         setTimeout(() => {
@@ -871,8 +1036,17 @@ class JimGame {
 
         // Remove coin after animation
         setTimeout(() => {
-          coin.remove();
+          if (coin.parentNode) {
+            coin.remove();
+          }
         }, 1500);
+      } else {
+        // If no counter, just remove coin
+        setTimeout(() => {
+          if (coin.parentNode) {
+            coin.remove();
+          }
+        }, 1000);
       }
     }, 500);
   }
@@ -914,6 +1088,9 @@ class JimGame {
   }
 
   startLoseButtonPhase() {
+    // Remove gold counter when entering lose button phase
+    this.removeGoldCounter();
+
     // updateDisplay() will handle showing lose.png and hiding Jim offscreen
   }
 
@@ -928,7 +1105,7 @@ class JimGame {
     this.cupGame.gameActive = false; // Start with cups non-clickable
     this.cupGame.cups = [];
 
-    // Create 3 cups
+    // Create 3 cups - positioned lower so dialogue is visible
     for (let i = 0; i < GAME_CONFIG.UI.CUP_COUNT; i++) {
       const cup = document.createElement("div");
       cup.style.position = "absolute";
@@ -937,7 +1114,7 @@ class JimGame {
       cup.style.background = "linear-gradient(135deg, #8B4513, #A0522D)";
       cup.style.borderRadius = "60px 60px 10px 10px";
       cup.style.left = window.innerWidth / 2 - 180 + i * 120 + "px";
-      cup.style.top = window.innerHeight / 2 + "px";
+      cup.style.top = window.innerHeight / 2 + 100 + "px"; // Moved down by 100px
       cup.style.cursor = "not-allowed";
       cup.style.border = "3px solid #654321";
       cup.style.boxShadow = "0 10px 20px rgba(0, 0, 0, 0.5)";
@@ -948,14 +1125,14 @@ class JimGame {
       this.cupGame.cups.push(cup);
     }
 
-    // Show Jim under middle cup briefly
+    // Show Jim under middle cup briefly - also moved down
     const jimUnderCup = document.createElement("img");
     jimUnderCup.src = "jim1.png";
     jimUnderCup.style.position = "absolute";
     jimUnderCup.style.width = "60px";
     jimUnderCup.style.height = "60px";
     jimUnderCup.style.left = window.innerWidth / 2 - 30 + "px";
-    jimUnderCup.style.top = window.innerHeight / 2 + 100 + "px";
+    jimUnderCup.style.top = window.innerHeight / 2 + 200 + "px"; // Moved down by 100px
     jimUnderCup.style.zIndex = "50";
     this.gameContainer.appendChild(jimUnderCup);
 
@@ -989,6 +1166,8 @@ class JimGame {
     if (!this.cupGame.gameActive) return;
 
     this.cupGame.gameActive = false;
+
+    this.audioManager.playSound("small_failure");
 
     // Show all cups are empty
     this.dialogueText.textContent = "😈 HAHAHAHA! I wasn't under ANY cup!";
@@ -1120,7 +1299,7 @@ class JimGame {
     this.jim8ClickCount = 0;
     this.chickenDirection = 0;
     this.chickenPosition = 0;
-    this.chickenSpeed = 0;
+    this.opacityInterval = null;
     this.minions = [];
     this.defeatedMinions = 0;
     this.goldEarned = 0;
@@ -1146,6 +1325,11 @@ class JimGame {
 
     this.updateDisplay();
     this.updateProgressBar();
+
+    // Restart background music
+    setTimeout(() => {
+      this.audioManager.startBackgroundMusic();
+    }, 1000);
 
     // Welcome back sparkle
     setTimeout(() => {
