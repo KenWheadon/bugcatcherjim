@@ -9,7 +9,18 @@ const EndingScreen = {
           <h1 class="ending-title" style="color: ${ending.color}">
             ${ending.title}
           </h1>
+          <div class="ending-content-wrapper">
           <p class="ending-message">${ending.message}</p>
+           <div class="final-stats">
+            <h2>Final Results</h2>
+            <p><strong>Total Score:</strong> ${gameState.score}</p>
+            <p><strong>Final Stage Reached:</strong> ${gameState.stage}</p>
+            <p><strong>Bugs Currently Carrying:</strong> ${
+              gameState.player.carrying.length
+            }</p>
+          </div>
+          </div>
+          
           
           <div class="stage-results">
             <h2>Your Journey</h2>
@@ -54,14 +65,6 @@ const EndingScreen = {
             </div>
           </div>
           
-          <div class="final-stats">
-            <h2>Final Results</h2>
-            <p><strong>Total Score:</strong> ${gameState.score}</p>
-            <p><strong>Final Stage Reached:</strong> ${gameState.stage}</p>
-            <p><strong>Bugs Currently Carrying:</strong> ${
-              gameState.player.carrying.length
-            }</p>
-          </div>
           
           <button id="restart-button" class="restart-button">
             ${MESSAGES.UI.RESTART_BUTTON}

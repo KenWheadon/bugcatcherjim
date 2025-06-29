@@ -9,54 +9,17 @@ const StartScreen = {
             <img src="${UTILS.getJimImagePath(
               1
             )}" alt="Jim" class="jim-image" />
-          </div>
-          <p class="game-description">
+                      <p class="game-description">
             ${MESSAGES.UI.START_DESCRIPTION}
           </p>
+          </div>
+
           <div class="game-instructions">
             <h3>🎮 Controls</h3>
             <p><strong>WASD or Arrow Keys:</strong> Move Jim around</p>
             <p><strong>SPACE (hold):</strong> Sprint (uses stamina)</p>
             <p><strong>Walk into bugs:</strong> Collect them (gain stamina)</p>
             <p><strong>Walk into bin:</strong> Deposit bugs for points</p>
-            
-            <h3>🐛 Bug Values</h3>
-            <div class="bug-values">
-              <div class="bug-value-item">
-                <span class="bug-emoji">✨</span>
-                <span class="bug-name">Firefly</span>
-                <span class="bug-points">5 pts</span>
-              </div>
-              <div class="bug-value-item">
-                <span class="bug-emoji">🪲</span>
-                <span class="bug-name">Beetle</span>
-                <span class="bug-points">10 pts</span>
-              </div>
-              <div class="bug-value-item">
-                <span class="bug-emoji">🦋</span>
-                <span class="bug-name">Butterfly</span>
-                <span class="bug-points">15 pts</span>
-              </div>
-              <div class="bug-value-item">
-                <span class="bug-emoji">🐞</span>
-                <span class="bug-name">Ladybug</span>
-                <span class="bug-points">25 pts</span>
-              </div>
-              <div class="bug-value-item">
-                <span class="bug-emoji">🦗</span>
-                <span class="bug-name">Grasshopper</span>
-                <span class="bug-points">35 pts</span>
-              </div>
-              <div class="bug-value-item">
-                <span class="bug-emoji">🪃</span>
-                <span class="bug-name">Dragonfly</span>
-                <span class="bug-points">50 pts</span>
-              </div>
-            </div>
-            
-            <h3>⚠️ Warning</h3>
-            <p><strong>Monsters spawn when you deposit bugs!</strong></p>
-            <p><strong>Getting caught advances you to the next stage!</strong></p>
           </div>
           <button id="start-button" class="start-button">
             ${MESSAGES.UI.START_BUTTON}

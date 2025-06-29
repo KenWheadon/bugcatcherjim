@@ -19,6 +19,9 @@ const Game = {
       size: CONFIG.PLAYER.SIZE,
       speed: CONFIG.PLAYER.SPEED,
       carrying: [], // Array of carried bugs
+      rotation: 0, // For head rolling animation in stage 3
+      lastX: CONFIG.PLAYER.START_X,
+      lastY: CONFIG.PLAYER.START_Y,
     },
 
     // Camera state
@@ -201,6 +204,9 @@ const Game = {
         size: CONFIG.PLAYER.SIZE,
         speed: CONFIG.PLAYER.SPEED,
         carrying: [],
+        rotation: 0,
+        lastX: CONFIG.PLAYER.START_X,
+        lastY: CONFIG.PLAYER.START_Y,
       },
 
       camera: {
@@ -351,6 +357,10 @@ const Game = {
     let dx = 0,
       dy = 0;
 
+    // Store previous position for rolling calculation
+    Game.state.player.lastX = Game.state.player.x;
+    Game.state.player.lastY = Game.state.player.y;
+
     // Movement controls
     if (Game.keys["w"] || Game.keys["arrowup"]) dy = -1;
     if (Game.keys["s"] || Game.keys["arrowdown"]) dy = 1;
@@ -395,6 +405,29 @@ const Game = {
 
     Game.state.player.x = newX;
     Game.state.player.y = newY;
+
+    // Update head rotation for stage 3 (rolling effect)
+    if (Game.state.stage === 3) {
+      const actualDx = Game.state.player.x - Game.state.player.lastX;
+      const actualDy = Game.state.player.y - Game.state.player.lastY;
+      const movement = Math.sqrt(actualDx ** 2 + actualDy ** 2);
+
+      if (movement > 0.1) {
+        // Only rotate if actually moving
+        // Calculate rotation based on movement distance
+        // The head rolls in the direction of movement
+        const rollAmount = movement * 0.02; // Adjust roll speed here
+        Game.state.player.rotation += rollAmount;
+
+        // Keep rotation within reasonable bounds (optional)
+        if (Game.state.player.rotation > Math.PI * 2) {
+          Game.state.player.rotation -= Math.PI * 2;
+        }
+      }
+    } else {
+      // Reset rotation for other stages
+      Game.state.player.rotation = 0;
+    }
   },
 
   // Update stamina system
@@ -790,6 +823,9 @@ const Game = {
     Game.state.player.x = CONFIG.PLAYER.START_X;
     Game.state.player.y = CONFIG.PLAYER.START_Y;
     Game.state.player.carrying = [];
+    Game.state.player.rotation = 0;
+    Game.state.player.lastX = CONFIG.PLAYER.START_X;
+    Game.state.player.lastY = CONFIG.PLAYER.START_Y;
     Game.state.stamina = CONFIG.STAMINA.MAX;
     Game.state.isSprinting = false;
 
@@ -995,17 +1031,40 @@ const Game = {
     const imageKey = imageKeys[Game.state.stage];
     const emoji = "👨";
 
-    UTILS.drawImageOrEmoji(
-      ctx,
-      imageKey,
-      emoji,
-      playerX,
-      playerY,
-      Game.state.player.size * 1.6,
-      Game.state.player.size * 1.6
-    );
+    // Save context for rotation
+    ctx.save();
 
-    // Carried bugs above player
+    // Apply rotation for stage 3 (head rolling)
+    if (Game.state.stage === 3) {
+      ctx.translate(playerX, playerY);
+      ctx.rotate(Game.state.player.rotation);
+
+      UTILS.drawImageOrEmoji(
+        ctx,
+        imageKey,
+        emoji,
+        0, // Draw at origin since we translated
+        0,
+        Game.state.player.size * 1.6,
+        Game.state.player.size * 1.6
+      );
+    } else {
+      // Normal rendering for stages 1 and 2
+      UTILS.drawImageOrEmoji(
+        ctx,
+        imageKey,
+        emoji,
+        playerX,
+        playerY,
+        Game.state.player.size * 1.6,
+        Game.state.player.size * 1.6
+      );
+    }
+
+    // Restore context
+    ctx.restore();
+
+    // Carried bugs above player (not affected by rotation)
     Game.state.player.carrying.forEach((carriedBug, index) => {
       const bugX = playerX + (index - 1) * 25;
       const bugY = playerY - 50;
