@@ -65,6 +65,18 @@ const CONFIG = {
     JIM_PREFIX: "images/jim-", // Changed from duck references
     JIM_EXTENSION: ".png",
     BACKGROUND: "images/research-station.jpg", // Changed from airplane cabin
+
+    // Game element images
+    COLLECTION_BIN: "images/collection-bin.png",
+    JIM_PLAYER: "images/jim-player.png",
+    MONSTER: "images/monster.png",
+
+    // UI icons
+    BUG_ICON: "images/bug-icon.png",
+    TROPHY_ICON: "images/trophy-icon.png",
+    ACHIEVEMENT_UNLOCK: "images/achievement-unlock.png",
+    STATS_ICON: "images/stats-icon.png",
+    CONTROLS_ICON: "images/controls-icon.png",
   },
 
   AUDIO: {
@@ -80,14 +92,29 @@ const CONFIG = {
     DAY_TRANSITION: "day-transition", // Changed from landing-sound
   },
 
-  // Bug types
+  // Bug types with image paths
   BUG_TYPES: [
-    { name: "Firefly", color: "#ffeb3b", symbol: "✨" },
-    { name: "Beetle", color: "#8bc34a", symbol: "🪲" },
-    { name: "Butterfly", color: "#e91e63", symbol: "🦋" },
-    { name: "Ladybug", color: "#f44336", symbol: "🐞" },
-    { name: "Grasshopper", color: "#4caf50", symbol: "🦗" },
-    { name: "Dragonfly", color: "#2196f3", symbol: "🪃" },
+    { name: "Firefly", color: "#ffeb3b", symbol: "✨", image: "firefly.png" },
+    { name: "Beetle", color: "#8bc34a", symbol: "🪲", image: "beetle.png" },
+    {
+      name: "Butterfly",
+      color: "#e91e63",
+      symbol: "🦋",
+      image: "butterfly.png",
+    },
+    { name: "Ladybug", color: "#f44336", symbol: "🐞", image: "ladybug.png" },
+    {
+      name: "Grasshopper",
+      color: "#4caf50",
+      symbol: "🦗",
+      image: "grasshopper.png",
+    },
+    {
+      name: "Dragonfly",
+      color: "#2196f3",
+      symbol: "🪃",
+      image: "dragonfly.png",
+    },
   ],
 
   // Achievement system
@@ -344,5 +371,89 @@ const UTILS = {
 
     console.log(`Canvas dimensions updated: ${size.width}x${size.height}`);
     return size;
+  },
+
+  // Image loading and caching system
+  imageCache: new Map(),
+  imagesLoaded: false,
+
+  // Load all game images
+  loadImages: () => {
+    return new Promise((resolve, reject) => {
+      const imagesToLoad = [];
+
+      // Bug images
+      CONFIG.BUG_TYPES.forEach((bugType) => {
+        imagesToLoad.push({
+          key: `bug_${bugType.image}`,
+          src: `images/${bugType.image}`,
+        });
+      });
+
+      // Game element images
+      imagesToLoad.push(
+        { key: "collection_bin", src: CONFIG.IMAGES.COLLECTION_BIN },
+        { key: "jim_player", src: CONFIG.IMAGES.JIM_PLAYER },
+        { key: "monster", src: CONFIG.IMAGES.MONSTER },
+        { key: "bug_icon", src: CONFIG.IMAGES.BUG_ICON },
+        { key: "trophy_icon", src: CONFIG.IMAGES.TROPHY_ICON },
+        { key: "achievement_unlock", src: CONFIG.IMAGES.ACHIEVEMENT_UNLOCK },
+        { key: "stats_icon", src: CONFIG.IMAGES.STATS_ICON },
+        { key: "controls_icon", src: CONFIG.IMAGES.CONTROLS_ICON }
+      );
+
+      let loadedCount = 0;
+      const totalCount = imagesToLoad.length;
+
+      console.log(`Loading ${totalCount} images...`);
+
+      imagesToLoad.forEach((imageInfo) => {
+        const img = new Image();
+        img.onload = () => {
+          UTILS.imageCache.set(imageInfo.key, img);
+          loadedCount++;
+          console.log(
+            `Loaded: ${imageInfo.key} (${loadedCount}/${totalCount})`
+          );
+
+          if (loadedCount === totalCount) {
+            UTILS.imagesLoaded = true;
+            console.log("All images loaded successfully!");
+            resolve();
+          }
+        };
+
+        img.onerror = () => {
+          console.error(`Failed to load image: ${imageInfo.src}`);
+          // Still count as "loaded" to prevent blocking
+          loadedCount++;
+          if (loadedCount === totalCount) {
+            UTILS.imagesLoaded = true;
+            resolve();
+          }
+        };
+
+        img.src = imageInfo.src;
+      });
+    });
+  },
+
+  // Get cached image
+  getImage: (key) => {
+    return UTILS.imageCache.get(key);
+  },
+
+  // Draw image with fallback to emoji
+  drawImageOrEmoji: (ctx, imageKey, emoji, x, y, width, height) => {
+    const image = UTILS.getImage(imageKey);
+    if (image && UTILS.imagesLoaded) {
+      ctx.drawImage(image, x - width / 2, y - height / 2, width, height);
+    } else {
+      // Fallback to emoji
+      ctx.fillStyle = "white";
+      ctx.font = `bold ${Math.floor(height * 0.8)}px Arial`;
+      ctx.textAlign = "center";
+      ctx.fillText(emoji, x, y + height * 0.3);
+    }
   },
 };

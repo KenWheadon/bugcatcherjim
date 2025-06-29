@@ -51,6 +51,14 @@ const Game = {
     // Calculate and set canvas dimensions based on screen size
     UTILS.updateCanvasDimensions();
 
+    // Load all images first
+    try {
+      await UTILS.loadImages();
+      console.log("Images loaded successfully");
+    } catch (error) {
+      console.error("Error loading images:", error);
+    }
+
     // Initialize achievement system
     AchievementManager.init();
 
@@ -837,11 +845,16 @@ const Game = {
       Game.state.collectionBin.size
     );
 
-    // Bin label
-    ctx.fillStyle = "white";
-    ctx.font = "bold 30px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("🗑️", binX, binY + 10);
+    // Bin image or emoji
+    UTILS.drawImageOrEmoji(
+      ctx,
+      "collection_bin",
+      "🗑️",
+      binX,
+      binY,
+      Game.state.collectionBin.size * 0.8,
+      Game.state.collectionBin.size * 0.8
+    );
   },
 
   // Render bugs
@@ -878,11 +891,18 @@ const Game = {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Bug symbol
-      ctx.fillStyle = "white";
-      ctx.font = "bold 20px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText(CONFIG.BUG_TYPES[bug.type].symbol, x, y + 7);
+      // Bug image or emoji
+      const imageKey = `bug_${CONFIG.BUG_TYPES[bug.type].image}`;
+      const emoji = CONFIG.BUG_TYPES[bug.type].symbol;
+      UTILS.drawImageOrEmoji(
+        ctx,
+        imageKey,
+        emoji,
+        x,
+        y,
+        bug.size * 1.6,
+        bug.size * 1.6
+      );
     });
   },
 
@@ -947,11 +967,16 @@ const Game = {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Monster symbol
-      ctx.fillStyle = "white";
-      ctx.font = "bold 28px Arial";
-      ctx.textAlign = "center";
-      ctx.fillText("👹", x, y + 10);
+      // Monster image or emoji
+      UTILS.drawImageOrEmoji(
+        ctx,
+        "monster",
+        "👹",
+        x,
+        y,
+        monster.size * 1.6,
+        monster.size * 1.6
+      );
     });
   },
 
@@ -977,15 +1002,23 @@ const Game = {
     ctx.lineWidth = 3;
     ctx.stroke();
 
-    // Player symbol
-    ctx.fillStyle = "white";
-    ctx.font = "bold 24px Arial";
-    ctx.textAlign = "center";
-    ctx.fillText("👨", playerX, playerY + 8);
+    // Player image or emoji
+    UTILS.drawImageOrEmoji(
+      ctx,
+      "jim_player",
+      "👨",
+      playerX,
+      playerY,
+      Game.state.player.size * 1.6,
+      Game.state.player.size * 1.6
+    );
 
     // Carried bug
     if (Game.state.player.carrying) {
-      ctx.fillStyle = CONFIG.BUG_TYPES[Game.state.player.carrying.type].color;
+      const bugType = Game.state.player.carrying.type;
+
+      // Carried bug background
+      ctx.fillStyle = CONFIG.BUG_TYPES[bugType].color;
       ctx.beginPath();
       ctx.arc(playerX, playerY - 50, 15, 0, Math.PI * 2);
       ctx.fill();
@@ -994,12 +1027,17 @@ const Game = {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      ctx.fillStyle = "white";
-      ctx.font = "bold 16px Arial";
-      ctx.fillText(
-        CONFIG.BUG_TYPES[Game.state.player.carrying.type].symbol,
+      // Carried bug image or emoji
+      const imageKey = `bug_${CONFIG.BUG_TYPES[bugType].image}`;
+      const emoji = CONFIG.BUG_TYPES[bugType].symbol;
+      UTILS.drawImageOrEmoji(
+        ctx,
+        imageKey,
+        emoji,
         playerX,
-        playerY - 44
+        playerY - 50,
+        24,
+        24
       );
     }
   },
