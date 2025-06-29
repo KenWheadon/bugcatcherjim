@@ -100,6 +100,9 @@ class AudioManager {
 
 class JimGame {
   constructor() {
+    // Initialize audio manager first
+    this.audioManager = new AudioManager();
+
     this.currentJim = 1;
     this.maxJim = GAME_CONFIG.MAX_JIM;
     this.hp = 0;
@@ -119,6 +122,8 @@ class JimGame {
 
     // Jim8 multi-click tracking
     this.jim8ClickCount = 0;
+    this.chickenSpeed = 0;
+    this.opacityInterval = null;
 
     // Get DOM elements
     this.jimImage = document.getElementById("jim-image");
@@ -773,7 +778,6 @@ class JimGame {
     // Clear any opacity intervals that might be running
     if (this.opacityInterval) {
       clearInterval(this.opacityInterval);
-      this.chickenSpeed = 0;
       this.opacityInterval = null;
     }
   }
@@ -1299,6 +1303,7 @@ class JimGame {
     this.jim8ClickCount = 0;
     this.chickenDirection = 0;
     this.chickenPosition = 0;
+    this.chickenSpeed = 0;
     this.opacityInterval = null;
     this.minions = [];
     this.defeatedMinions = 0;
@@ -1314,14 +1319,6 @@ class JimGame {
     // Clean up any remaining cups
     this.cupGame.cups.forEach((cup) => cup.remove());
     this.cupGame = { cups: [], correctCup: -1, gameActive: false };
-
-    // Reset display
-    this.jimImage.style.display = "block";
-    this.jimImage.style.position = "static";
-    this.jimImage.className = "jim-image happy-jim";
-    this.gameContainer.classList.remove("screen-shake");
-    this.comboCounter.style.display = "none";
-    this.progressBar.classList.remove("fade-out");
 
     this.updateDisplay();
     this.updateProgressBar();
