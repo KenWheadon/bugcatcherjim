@@ -1,17 +1,16 @@
-// Bug Catcher Jim - Main game application
+// Bug Catcher Jim - Main game application (Game Jam Pivot)
 const Game = {
   // Game state
   state: {
-    screen: "start", // 'start', 'game', 'popup', 'ending'
-    phase: "day", // 'day', 'night'
+    screen: "start", // 'start', 'game', 'stage-transition', 'game-over'
+    stage: 1, // 1, 2, or 3
     score: 0,
-    day: 1,
-    completedOrders: 0,
-    currentOrder: null,
-    daylightTime: CONFIG.TIME.DAY_DURATION,
-    nightTime: CONFIG.TIME.NIGHT_DURATION,
+    stageScores: [0, 0, 0], // Scores for each stage
     gameLoopId: null,
-    currentMusicTrack: null,
+
+    // Stamina system
+    stamina: CONFIG.STAMINA.MAX,
+    isSprinting: false,
 
     // Player state
     player: {
@@ -19,7 +18,7 @@ const Game = {
       y: CONFIG.PLAYER.START_Y,
       size: CONFIG.PLAYER.SIZE,
       speed: CONFIG.PLAYER.SPEED,
-      carrying: null,
+      carrying: [], // Array of carried bugs
     },
 
     // Camera state
@@ -60,12 +59,6 @@ const Game = {
       console.error("Error loading images:", error);
     }
 
-    // Initialize achievement system
-    AchievementManager.init();
-
-    // Initialize achievement drawer
-    AchievementDrawer.init();
-
     // Initialize start screen
     StartScreen.init();
 
@@ -98,12 +91,47 @@ const Game = {
   // Setup input event listeners
   setupInput: () => {
     document.addEventListener("keydown", (e) => {
-      Game.keys[e.key.toLowerCase()] = true;
+      if (!Game.keys[e.key.toLowerCase()]) {
+        Game.keys[e.key.toLowerCase()] = true;
+
+        // Handle sprinting - only start if space was just pressed
+        if (e.key === " " || e.key === "Space") {
+          e.preventDefault();
+          Game.startSprinting();
+        }
+      }
     });
 
     document.addEventListener("keyup", (e) => {
       Game.keys[e.key.toLowerCase()] = false;
+
+      // Handle sprint stop - stop when space is released
+      if (e.key === " " || e.key === "Space") {
+        e.preventDefault();
+        Game.stopSprinting();
+      }
     });
+  },
+
+  // Start sprinting if allowed
+  startSprinting: () => {
+    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
+    if (
+      stageConfig.canSprint &&
+      Game.state.stamina > 0 &&
+      !Game.state.isSprinting
+    ) {
+      Game.state.isSprinting = true;
+      UTILS.playAudio(CONFIG.AUDIO.SPRINT_START, 0.3);
+    }
+  },
+
+  // Stop sprinting
+  stopSprinting: () => {
+    if (Game.state.isSprinting) {
+      Game.state.isSprinting = false;
+      UTILS.playAudio(CONFIG.AUDIO.SPRINT_STOP, 0.3);
+    }
   },
 
   // Setup canvas
@@ -134,27 +162,21 @@ const Game = {
   // Start a new game
   startGame: () => {
     Game.resetGame();
-    Game.state.screen = "popup";
-    Game.state.phase = "day";
+    Game.state.screen = "game";
+    Game.state.stage = 1;
     Game.state.score = 0;
-    Game.state.day = 1;
-    Game.state.completedOrders = 0;
-    Game.state.daylightTime = CONFIG.TIME.DAY_DURATION;
-    Game.state.currentMusicTrack = UTILS.switchBackgroundMusic("day");
+    Game.state.stageScores = [0, 0, 0];
+    Game.state.stamina = CONFIG.STAMINA.MAX;
 
-    // Track game started achievement
-    AchievementManager.trackGameStarted();
+    // Start background music
+    UTILS.switchBackgroundMusic(CONFIG.AUDIO.BACKGROUND_MUSIC);
 
     // Initialize world
     Game.initializeWorld();
 
-    // Generate first order
-    Game.state.currentOrder = OrderGenerator.generateOrder(
-      Game.state.completedOrders
-    );
-
-    // Show order popup
-    Game.showOrderPopup();
+    // Show game and start loop
+    Game.showGameUI();
+    Game.startGameLoop();
   },
 
   // Reset game state
@@ -166,22 +188,19 @@ const Game = {
 
     Game.state = {
       screen: "start",
-      phase: "day",
+      stage: 1,
       score: 0,
-      day: 1,
-      completedOrders: 0,
-      currentOrder: null,
-      daylightTime: CONFIG.TIME.DAY_DURATION,
-      nightTime: CONFIG.TIME.NIGHT_DURATION,
+      stageScores: [0, 0, 0],
       gameLoopId: null,
-      currentMusicTrack: null,
+      stamina: CONFIG.STAMINA.MAX,
+      isSprinting: false,
 
       player: {
         x: CONFIG.PLAYER.START_X,
         y: CONFIG.PLAYER.START_Y,
         size: CONFIG.PLAYER.SIZE,
         speed: CONFIG.PLAYER.SPEED,
-        carrying: null,
+        carrying: [],
       },
 
       camera: {
@@ -191,7 +210,7 @@ const Game = {
 
       bugs: [],
       monsters: [],
-      particles: [], // Reset particles
+      particles: [],
 
       collectionBin: {
         x: CONFIG.BIN.X,
@@ -205,28 +224,30 @@ const Game = {
   initializeWorld: () => {
     Game.state.bugs = [];
     Game.state.monsters = [];
-    Game.state.particles = []; // Initialize particles
+    Game.state.particles = [];
 
-    // Spawn bugs
+    // Spawn initial bugs (one of each type)
     for (let i = 0; i < CONFIG.BUG_TYPES.length; i++) {
       Game.spawnBug(i);
     }
   },
 
   // Spawn a bug of specific type
-  spawnBug: (typeIndex) => {
+  spawnBug: (typeIndex, atEdge = false) => {
     let attempts = 0;
     let validPosition = false;
     let bug;
 
     while (!validPosition && attempts < 50) {
-      const pos = UTILS.randomPosition(
-        CONFIG.BUGS.SIZE,
-        CONFIG.BUGS.SIZE,
-        CONFIG.WORLD.WIDTH - CONFIG.BUGS.SIZE,
-        CONFIG.WORLD.HEIGHT - CONFIG.BUGS.SIZE,
-        CONFIG.BUGS.SPAWN_MARGIN
-      );
+      const pos = atEdge
+        ? UTILS.randomEdgePosition()
+        : UTILS.randomPosition(
+            CONFIG.BUGS.SIZE,
+            CONFIG.BUGS.SIZE,
+            CONFIG.WORLD.WIDTH - CONFIG.BUGS.SIZE,
+            CONFIG.WORLD.HEIGHT - CONFIG.BUGS.SIZE,
+            CONFIG.BUGS.SPAWN_MARGIN
+          );
 
       // Check distance from player and collection bin
       const playerDist = UTILS.distance(
@@ -257,30 +278,32 @@ const Game = {
     }
 
     if (bug) {
-      Game.state.bugs[typeIndex] = bug;
+      Game.state.bugs.push(bug);
     }
   },
 
-  // Show order popup
-  showOrderPopup: () => {
-    Game.state.screen = "popup";
-    Game.renderOrderPopup();
-  },
+  // Spawn a monster of specific type
+  spawnMonster: (typeIndex) => {
+    const pos = UTILS.randomEdgePosition();
 
-  // Start hunting (close popup and begin game)
-  startHunting: () => {
-    // Clear the popup overlay completely
-    const container = document.getElementById("game-container");
-    container.innerHTML = ""; // This removes the popup
+    const monster = {
+      x: pos.x,
+      y: pos.y,
+      type: typeIndex,
+      size: CONFIG.MONSTERS.SIZE,
+      angle: Math.random() * Math.PI * 2,
+      speed: CONFIG.MONSTERS.SPEEDS[typeIndex],
+      huntPattern: CONFIG.MONSTERS.HUNT_PATTERNS[typeIndex],
+      alertLevel: 0,
+      lastSeenX: 0,
+      lastSeenY: 0,
+      wallCollisionCooldown: 0,
+      patrolTarget: { x: pos.x, y: pos.y },
+      aggressionLevel: 0,
+    };
 
-    // Update canvas dimensions for current screen
-    UTILS.updateCanvasDimensions();
-    Game.setupCanvas();
-
-    // Set game state and show UI
-    Game.state.screen = "game";
-    Game.showGameUI();
-    Game.startGameLoop();
+    Game.state.monsters.push(monster);
+    UTILS.playAudio(CONFIG.AUDIO.MONSTER_SPAWN, 0.4);
   },
 
   // Main game loop
@@ -304,54 +327,23 @@ const Game = {
 
   // Update game state
   updateGame: () => {
-    if (Game.state.phase === "day") {
-      Game.updateDayPhase();
-    } else if (Game.state.phase === "night") {
-      Game.updateNightPhase();
-    }
-
     Game.updatePlayer();
+    Game.updateStamina();
     Game.updateCamera();
-
-    // Update particles
-    UTILS.updateParticles(Game.state.particles);
-  },
-
-  // Update day phase
-  updateDayPhase: () => {
-    // Update daylight timer
-    Game.state.daylightTime -= 1 / 60;
-
-    if (Game.state.daylightTime <= 0) {
-      Game.startNightPhase();
-      return;
-    }
-
-    // Update bugs
     Game.updateBugs();
+    Game.updateMonsters();
 
     // Check bug collection
     Game.checkBugCollection();
 
     // Check bin deposit
     Game.checkBinDeposit();
-  },
-
-  // Update night phase
-  updateNightPhase: () => {
-    // Update night timer
-    Game.state.nightTime -= 1 / 60;
-
-    if (Game.state.nightTime <= 0) {
-      Game.startDayPhase();
-      return;
-    }
-
-    // Update monsters
-    Game.updateMonsters();
 
     // Check monster collision
     Game.checkMonsterCollision();
+
+    // Update particles
+    UTILS.updateParticles(Game.state.particles);
   },
 
   // Update player
@@ -360,16 +352,34 @@ const Game = {
       dy = 0;
 
     // Movement controls
-    if (Game.keys["w"] || Game.keys["arrowup"]) dy = -Game.state.player.speed;
-    if (Game.keys["s"] || Game.keys["arrowdown"]) dy = Game.state.player.speed;
-    if (Game.keys["a"] || Game.keys["arrowleft"]) dx = -Game.state.player.speed;
-    if (Game.keys["d"] || Game.keys["arrowright"]) dx = Game.state.player.speed;
+    if (Game.keys["w"] || Game.keys["arrowup"]) dy = -1;
+    if (Game.keys["s"] || Game.keys["arrowdown"]) dy = 1;
+    if (Game.keys["a"] || Game.keys["arrowleft"]) dx = -1;
+    if (Game.keys["d"] || Game.keys["arrowright"]) dx = 1;
 
     // Diagonal movement normalization
     if (dx && dy) {
       dx *= 0.707;
       dy *= 0.707;
     }
+
+    // Calculate speed based on stage and conditions
+    let currentSpeed = Game.state.player.speed;
+    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
+
+    // Apply sprint multiplier if sprinting
+    if (Game.state.isSprinting && stageConfig.canSprint) {
+      currentSpeed *= CONFIG.PLAYER.SPRINT_MULTIPLIER;
+    }
+
+    // Apply head speed reduction when carrying (stage 3 only)
+    if (Game.state.stage === 3 && Game.state.player.carrying.length > 0) {
+      currentSpeed *= CONFIG.PLAYER.HEAD_SPEED_MULTIPLIER;
+    }
+
+    // Apply movement
+    dx *= currentSpeed;
+    dy *= currentSpeed;
 
     // Update position with world bounds
     const newX = UTILS.clamp(
@@ -385,6 +395,20 @@ const Game = {
 
     Game.state.player.x = newX;
     Game.state.player.y = newY;
+  },
+
+  // Update stamina system
+  updateStamina: () => {
+    // Drain stamina while sprinting (1 point every 3 seconds)
+    if (Game.state.isSprinting) {
+      Game.state.stamina -= 1 / CONFIG.STAMINA.DRAIN_PER_SECOND; // Convert to per-frame
+
+      // Stop sprinting if out of stamina
+      if (Game.state.stamina <= 0) {
+        Game.state.stamina = 0;
+        Game.stopSprinting();
+      }
+    }
   },
 
   // Update camera
@@ -441,226 +465,7 @@ const Game = {
     });
   },
 
-  // Check bug collection
-  checkBugCollection: () => {
-    if (Game.state.player.carrying) return;
-
-    Game.state.bugs.forEach((bug, index) => {
-      if (!bug) return;
-
-      const dist = UTILS.distance(
-        bug.x,
-        bug.y,
-        Game.state.player.x,
-        Game.state.player.y
-      );
-      if (dist < bug.size + Game.state.player.size) {
-        // Pick up bug
-        Game.state.player.carrying = {
-          type: bug.type,
-          name: CONFIG.BUG_TYPES[bug.type].name,
-        };
-
-        // Create particle effect for bug collection
-        const particles = UTILS.createParticles(bug.x, bug.y, "BUG_COLLECTION");
-        Game.state.particles.push(...particles);
-
-        // Remove bug from world
-        Game.state.bugs[index] = null;
-
-        // Play collection sound
-        UTILS.playAudio(CONFIG.AUDIO.COLLECT_SOUND);
-
-        // Achievement tracking
-        AchievementManager.trackBugCollected(bug.type);
-      }
-    });
-  },
-
-  // Check bin deposit
-  checkBinDeposit: () => {
-    if (!Game.state.player.carrying) return;
-
-    const dist = UTILS.distance(
-      Game.state.collectionBin.x,
-      Game.state.collectionBin.y,
-      Game.state.player.x,
-      Game.state.player.y
-    );
-
-    if (dist < Game.state.collectionBin.size + Game.state.player.size) {
-      // Deposit bug
-      const carriedBugType = Game.state.player.carrying.type;
-
-      // Check if this bug type is needed for current order
-      const isNeeded = Game.state.currentOrder.bugs.includes(carriedBugType);
-      const alreadyCollected = Game.state.currentOrder.collected.filter(
-        (collected) => collected === carriedBugType
-      ).length;
-      const totalNeeded = Game.state.currentOrder.bugs.filter(
-        (needed) => needed === carriedBugType
-      ).length;
-
-      if (isNeeded && alreadyCollected < totalNeeded) {
-        // Add to collected bugs
-        Game.state.currentOrder.collected.push(carriedBugType);
-        console.log(
-          `Deposited ${CONFIG.BUG_TYPES[carriedBugType].name}. Order progress:`,
-          Game.state.currentOrder.collected
-        );
-      }
-
-      // Clear carried bug
-      Game.state.player.carrying = null;
-
-      // Respawn the bug
-      Game.spawnBug(carriedBugType);
-
-      // Play deposit sound
-      UTILS.playAudio(CONFIG.AUDIO.UI_HOVER);
-
-      // Check if order is complete
-      if (OrderGenerator.isOrderComplete(Game.state.currentOrder)) {
-        console.log("Order completed!");
-        Game.completeOrder();
-      }
-    }
-  },
-
-  // Complete current order
-  completeOrder: () => {
-    Game.state.completedOrders++;
-    Game.state.score += Game.state.currentOrder.bugs.length * 10;
-
-    // Create particle effect for order completion
-    const particles = UTILS.createParticles(
-      Game.state.collectionBin.x,
-      Game.state.collectionBin.y,
-      "ORDER_COMPLETE"
-    );
-    Game.state.particles.push(...particles);
-
-    // Play completion sound
-    UTILS.playAudio(CONFIG.AUDIO.ORDER_COMPLETE);
-
-    // Achievement tracking
-    AchievementManager.trackOrderCompleted();
-
-    // Generate next order
-    Game.state.currentOrder = OrderGenerator.generateOrder(
-      Game.state.completedOrders
-    );
-
-    // Hide game UI temporarily
-    Game.hideGameUI();
-
-    // Show order popup after delay
-    setTimeout(() => {
-      Game.showOrderPopup();
-    }, CONFIG.TIME.RESPONSE_TIME);
-  },
-
-  // Start night phase
-  startNightPhase: () => {
-    // Check if player is carrying a bug (instant death)
-    if (Game.state.player.carrying) {
-      // Immediate death screen - no delay for night death
-      Game.gameOver("night-death");
-      return;
-    }
-
-    Game.state.phase = "night";
-    Game.state.nightTime = CONFIG.TIME.NIGHT_DURATION;
-    Game.state.currentMusicTrack = UTILS.switchBackgroundMusic(
-      "night",
-      Game.state.currentMusicTrack
-    );
-
-    // Transform bugs into monsters
-    Game.transformBugsToMonsters();
-
-    // Play night sound
-    UTILS.playAudio(CONFIG.AUDIO.MONSTER_SPAWN);
-  },
-
-  // Start day phase
-  startDayPhase: () => {
-    Game.state.phase = "day";
-    Game.state.daylightTime = CONFIG.TIME.DAY_DURATION;
-    Game.state.day++;
-    Game.state.currentMusicTrack = UTILS.switchBackgroundMusic(
-      "day",
-      Game.state.currentMusicTrack
-    );
-
-    // Achievement tracking
-    AchievementManager.trackNightSurvived();
-    AchievementManager.trackDaySurvived();
-
-    // Transform monsters back to bugs
-    Game.transformMonstersToBugs();
-
-    // Play day sound
-    UTILS.playAudio(CONFIG.AUDIO.DAY_TRANSITION);
-  },
-
-  // Transform bugs to monsters
-  transformBugsToMonsters: () => {
-    Game.state.monsters = [];
-    Game.state.bugs.forEach((bug, index) => {
-      if (!bug) return;
-
-      // Each bug type becomes a specific monster type
-      const monsterType = index; // Direct mapping: bug type = monster type
-      const monster = {
-        x: bug.x,
-        y: bug.y,
-        type: monsterType,
-        originalBugType: index, // Track which bug it came from
-        size: CONFIG.MONSTERS.SIZE,
-        angle: Math.random() * Math.PI * 2,
-        speed: CONFIG.MONSTERS.SPEEDS[monsterType],
-        huntPattern: CONFIG.MONSTERS.HUNT_PATTERNS[monsterType],
-        alertLevel: 0,
-        lastSeenX: 0,
-        lastSeenY: 0,
-        wallCollisionCooldown: 0, // Prevent rapid wall bouncing
-        patrolTarget: { x: bug.x, y: bug.y }, // For patrol behavior
-        aggressionLevel: 0, // For berserker behavior
-      };
-
-      Game.state.monsters.push(monster);
-    });
-  },
-
-  // Transform monsters back to bugs
-  transformMonstersToBugs: () => {
-    Game.state.bugs = [];
-    Game.state.monsters.forEach((monster, index) => {
-      if (index < CONFIG.BUG_TYPES.length) {
-        const bug = {
-          type: index,
-          x: monster.x,
-          y: monster.y,
-          vx: (Math.random() - 0.5) * 2,
-          vy: (Math.random() - 0.5) * 2,
-          size: CONFIG.BUGS.SIZE,
-        };
-        Game.state.bugs[index] = bug;
-      }
-    });
-
-    // Fill any missing bug slots
-    for (let i = 0; i < CONFIG.BUG_TYPES.length; i++) {
-      if (!Game.state.bugs[i]) {
-        Game.spawnBug(i);
-      }
-    }
-
-    Game.state.monsters = [];
-  },
-
-  // Update monsters with improved AI and wall avoidance
+  // Update monsters with AI
   updateMonsters: () => {
     Game.state.monsters.forEach((monster) => {
       // Decrease wall collision cooldown
@@ -690,24 +495,16 @@ const Game = {
         monster.alertLevel = 1;
         monster.lastSeenX = Game.state.player.x;
         monster.lastSeenY = Game.state.player.y;
-
-        // Increase aggression for berserker type
-        if (monster.huntPattern === "berserker") {
-          monster.aggressionLevel = Math.min(
-            monster.aggressionLevel + 0.1,
-            2.0
-          );
-        }
       }
 
-      // Monster AI behavior based on hunt pattern
+      // Monster AI behavior
       if (monster.alertLevel === 0) {
         Game.handleMonsterSearchBehavior(monster);
       } else {
         Game.handleMonsterChaseBehavior(monster, playerDist, canSeePlayer);
       }
 
-      // Check for wall collisions and handle avoidance
+      // Check for wall collisions
       Game.handleMonsterWallCollision(monster);
 
       // Keep monsters in bounds
@@ -724,25 +521,22 @@ const Game = {
     });
   },
 
-  // Handle monster search behavior when not chasing player
+  // Handle monster search behavior
   handleMonsterSearchBehavior: (monster) => {
     switch (monster.huntPattern) {
       case "aggressive":
-        // Random aggressive movement
         monster.angle += (Math.random() - 0.5) * 0.3;
         monster.x += Math.cos(monster.angle) * monster.speed;
         monster.y += Math.sin(monster.angle) * monster.speed;
         break;
 
       case "stalker":
-        // Slow, methodical movement
         monster.angle += (Math.random() - 0.5) * 0.1;
         monster.x += Math.cos(monster.angle) * monster.speed * 0.5;
         monster.y += Math.sin(monster.angle) * monster.speed * 0.5;
         break;
 
       case "patrol":
-        // Move towards patrol target, then pick new target
         const patrolDist = UTILS.distance(
           monster.x,
           monster.y,
@@ -750,7 +544,6 @@ const Game = {
           monster.patrolTarget.y
         );
         if (patrolDist < 50) {
-          // Pick new patrol target
           monster.patrolTarget = UTILS.randomPosition(
             monster.size,
             monster.size,
@@ -767,66 +560,14 @@ const Game = {
         monster.y += Math.sin(monster.angle) * monster.speed * 0.7;
         break;
 
-      case "ambush":
-        // Mostly stationary, occasional repositioning
-        if (Math.random() < 0.02) {
-          monster.angle += (Math.random() - 0.5) * 0.5;
-          monster.x += Math.cos(monster.angle) * monster.speed * 0.3;
-          monster.y += Math.sin(monster.angle) * monster.speed * 0.3;
-        }
-        break;
-
-      case "pack":
-        // Try to stay near other monsters
-        let nearestMonster = null;
-        let nearestDist = Infinity;
-        Game.state.monsters.forEach((otherMonster) => {
-          if (otherMonster !== monster) {
-            const dist = UTILS.distance(
-              monster.x,
-              monster.y,
-              otherMonster.x,
-              otherMonster.y
-            );
-            if (dist < nearestDist) {
-              nearestDist = dist;
-              nearestMonster = otherMonster;
-            }
-          }
-        });
-
-        if (nearestMonster && nearestDist > 100) {
-          const packAngle = Math.atan2(
-            nearestMonster.y - monster.y,
-            nearestMonster.x - monster.x
-          );
-          monster.angle = packAngle;
-          monster.x += Math.cos(monster.angle) * monster.speed * 0.6;
-          monster.y += Math.sin(monster.angle) * monster.speed * 0.6;
-        } else {
-          // Random movement if close to pack
-          monster.angle += (Math.random() - 0.5) * 0.2;
-          monster.x += Math.cos(monster.angle) * monster.speed * 0.4;
-          monster.y += Math.sin(monster.angle) * monster.speed * 0.4;
-        }
-        break;
-
-      case "berserker":
-        // Erratic, fast movement
-        monster.angle += (Math.random() - 0.5) * 0.4;
-        monster.x += Math.cos(monster.angle) * monster.speed * 0.8;
-        monster.y += Math.sin(monster.angle) * monster.speed * 0.8;
-        break;
-
       default:
-        // Default random movement
         monster.angle += (Math.random() - 0.5) * 0.2;
         monster.x += Math.cos(monster.angle) * monster.speed;
         monster.y += Math.sin(monster.angle) * monster.speed;
     }
   },
 
-  // Handle monster chase behavior when pursuing player
+  // Handle monster chase behavior
   handleMonsterChaseBehavior: (monster, playerDist, canSeePlayer) => {
     const dx = Game.state.player.x - monster.x;
     const dy = Game.state.player.y - monster.y;
@@ -834,30 +575,6 @@ const Game = {
 
     if (dist > 0) {
       let chaseSpeed = monster.speed * 1.5;
-
-      // Modify chase behavior based on hunt pattern
-      switch (monster.huntPattern) {
-        case "aggressive":
-          chaseSpeed *= 1.3;
-          break;
-        case "stalker":
-          chaseSpeed *= 0.8; // Stalkers are slower but persistent
-          break;
-        case "ambush":
-          chaseSpeed *= 2.0; // Ambush monsters are very fast when they strike
-          break;
-        case "pack":
-          // Pack monsters get speed boost if other monsters are also chasing
-          const chasingMonsters = Game.state.monsters.filter(
-            (m) => m.alertLevel === 1
-          ).length;
-          chaseSpeed *= 1 + chasingMonsters * 0.2;
-          break;
-        case "berserker":
-          chaseSpeed *= 1 + monster.aggressionLevel * 0.5;
-          break;
-      }
-
       monster.x += (dx / dist) * chaseSpeed;
       monster.y += (dy / dist) * chaseSpeed;
       monster.angle = Math.atan2(dy, dx);
@@ -866,49 +583,113 @@ const Game = {
     // Lose alert if too far and can't see player
     if (playerDist > 400 && !canSeePlayer) {
       monster.alertLevel = 0;
-      if (monster.huntPattern === "berserker") {
-        monster.aggressionLevel *= 0.9; // Slowly decrease aggression
-      }
     }
   },
 
-  // Handle monster wall collision and avoidance
+  // Handle monster wall collision
   handleMonsterWallCollision: (monster) => {
     const margin = monster.size + 10;
-    let hitWall = false;
 
-    // Check wall collisions
     if (monster.x < margin || monster.x > CONFIG.WORLD.WIDTH - margin) {
-      hitWall = true;
       if (monster.wallCollisionCooldown === 0) {
-        monster.angle = Math.PI - monster.angle; // Reflect horizontally
-        monster.wallCollisionCooldown = 30; // Prevent rapid bouncing
+        monster.angle = Math.PI - monster.angle;
+        monster.wallCollisionCooldown = 30;
       }
     }
 
     if (monster.y < margin || monster.y > CONFIG.WORLD.HEIGHT - margin) {
-      hitWall = true;
       if (monster.wallCollisionCooldown === 0) {
-        monster.angle = -monster.angle; // Reflect vertically
-        monster.wallCollisionCooldown = 30; // Prevent rapid bouncing
+        monster.angle = -monster.angle;
+        monster.wallCollisionCooldown = 30;
       }
     }
+  },
 
-    // Additional avoidance behavior for some monster types
-    if (hitWall) {
-      switch (monster.huntPattern) {
-        case "stalker":
-          // Stalkers try to find a way around walls
-          monster.angle += (Math.random() - 0.5) * Math.PI * 0.5;
-          break;
-        case "berserker":
-          // Berserkers get more aggressive when hitting walls
-          monster.aggressionLevel = Math.min(
-            monster.aggressionLevel + 0.2,
-            2.0
-          );
-          break;
+  // Check bug collection
+  checkBugCollection: () => {
+    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
+    if (Game.state.player.carrying.length >= stageConfig.maxCarrying) return;
+
+    for (let i = Game.state.bugs.length - 1; i >= 0; i--) {
+      const bug = Game.state.bugs[i];
+      if (!bug) continue;
+
+      const dist = UTILS.distance(
+        bug.x,
+        bug.y,
+        Game.state.player.x,
+        Game.state.player.y
+      );
+
+      if (dist < bug.size + Game.state.player.size) {
+        // Pick up bug
+        Game.state.player.carrying.push({
+          type: bug.type,
+          name: CONFIG.BUG_TYPES[bug.type].name,
+          points: CONFIG.BUG_TYPES[bug.type].points,
+        });
+
+        // Gain stamina
+        Game.state.stamina = Math.min(
+          CONFIG.STAMINA.MAX,
+          Game.state.stamina + CONFIG.STAMINA.GAIN_PER_BUG
+        );
+
+        // Create particle effect
+        const particles = UTILS.createParticles(bug.x, bug.y, "BUG_COLLECTION");
+        Game.state.particles.push(...particles);
+
+        // Remove bug from world
+        Game.state.bugs.splice(i, 1);
+
+        // Play collection sound
+        UTILS.playAudio(CONFIG.AUDIO.COLLECT_SOUND);
+
+        break; // Only collect one bug per frame
       }
+    }
+  },
+
+  // Check bin deposit
+  checkBinDeposit: () => {
+    if (Game.state.player.carrying.length === 0) return;
+
+    const dist = UTILS.distance(
+      Game.state.collectionBin.x,
+      Game.state.collectionBin.y,
+      Game.state.player.x,
+      Game.state.player.y
+    );
+
+    if (dist < Game.state.collectionBin.size + Game.state.player.size) {
+      // Deposit all carried bugs
+      let totalPoints = 0;
+
+      Game.state.player.carrying.forEach((carriedBug) => {
+        totalPoints += carriedBug.points;
+
+        // Spawn new bug and monster at edge
+        Game.spawnBug(carriedBug.type, true);
+        Game.spawnMonster(carriedBug.type);
+      });
+
+      // Add points to current stage score
+      Game.state.score += totalPoints;
+      Game.state.stageScores[Game.state.stage - 1] += totalPoints;
+
+      // Create particle effect for points
+      const particles = UTILS.createParticles(
+        Game.state.collectionBin.x,
+        Game.state.collectionBin.y,
+        "POINTS_GAINED"
+      );
+      Game.state.particles.push(...particles);
+
+      // Clear carried bugs
+      Game.state.player.carrying = [];
+
+      // Play deposit sound
+      UTILS.playAudio(CONFIG.AUDIO.DEPOSIT_SOUND || CONFIG.AUDIO.UI_HOVER);
     }
   },
 
@@ -922,69 +703,110 @@ const Game = {
         Game.state.player.y
       );
       if (dist < monster.size + Game.state.player.size) {
-        Game.gameOver("monster-death");
+        Game.handleStageEnd();
       }
     });
   },
 
-  // Game over
-  gameOver: (reason) => {
+  // Handle end of stage (monster collision)
+  handleStageEnd: () => {
     if (Game.state.gameLoopId) {
       cancelAnimationFrame(Game.state.gameLoopId);
       Game.state.gameLoopId = null;
     }
 
-    // Hide game UI
-    Game.hideGameUI();
-
-    // Switch to death music
-    Game.state.currentMusicTrack = UTILS.switchBackgroundMusic("death");
-
     // Play death sound
     UTILS.playAudio(CONFIG.AUDIO.DEATH_SOUND);
 
-    // Track death achievement
-    AchievementManager.trackDeath(reason);
-
-    // Show ending screen - immediate for night death, delayed for others
-    if (reason === "night-death") {
-      // Immediate transition for night death to remove the pause
-      EndingScreen.init(Game.state, reason);
+    if (Game.state.stage < 3) {
+      // Move to next stage
+      Game.state.stage++;
+      Game.showStageTransition();
     } else {
-      // Small delay for other death types for dramatic effect
-      setTimeout(() => {
-        EndingScreen.init(Game.state, reason);
-      }, CONFIG.TIME.RESPONSE_TIME);
+      // Game over
+      Game.gameOver();
     }
   },
 
-  // Render order popup
-  renderOrderPopup: () => {
+  // Show stage transition popup
+  showStageTransition: () => {
+    Game.state.screen = "stage-transition";
+    Game.hideGameUI();
+
     const container = document.getElementById("game-container");
-    const orderDisplay = OrderGenerator.getOrderDisplayText(
-      Game.state.currentOrder
-    );
+    let title, message, imagePath;
+
+    switch (Game.state.stage) {
+      case 2:
+        title = "You were mauled - but made it through!";
+        message =
+          "Your arms are gone, but you can still catch bugs! You can now only hold 1 bug at a time.";
+        imagePath = UTILS.getJimImagePath(2);
+        break;
+      case 3:
+        title = "You were mauled...again...";
+        message =
+          "Now you're just a head! You move slower when carrying bugs and can't sprint.";
+        imagePath = UTILS.getJimImagePath(3);
+        break;
+    }
 
     container.innerHTML = `
       <div class="popup-overlay">
-        <div class="order-popup">
-          <h3>${MESSAGES.ORDERS.ORDER_PREFIX}${Game.state.currentOrder.id}</h3>
-          <p>${MESSAGES.ORDERS.LINDA_INTRO}</p>
-          <p>${MESSAGES.ORDERS.ORDER_INTRO}</p>
-          <div class="order-bugs-display">${orderDisplay.neededHTML}</div>
-          <button id="hunt-button" class="start-button">${MESSAGES.ORDERS.HUNT_BUTTON}</button>
+        <div class="stage-transition-popup">
+          <h2>${title}</h2>
+          <div class="jim-display">
+            <img src="${imagePath}" alt="Jim Stage ${Game.state.stage}" class="jim-image" />
+          </div>
+          <p>${message}</p>
+          <button id="continue-button" class="start-button">Continue Hunting!</button>
         </div>
       </div>
     `;
 
     // Attach event listener
-    const huntButton = document.getElementById("hunt-button");
-    if (huntButton) {
-      huntButton.addEventListener("click", () => {
-        UTILS.playAudio(CONFIG.AUDIO.COLLECT_SOUND);
-        Game.startHunting();
+    const continueButton = document.getElementById("continue-button");
+    if (continueButton) {
+      continueButton.addEventListener("click", () => {
+        UTILS.playAudio(
+          CONFIG.AUDIO.STAGE_TRANSITION || CONFIG.AUDIO.COLLECT_SOUND
+        );
+        Game.continueToNextStage();
       });
     }
+  },
+
+  // Continue to next stage
+  continueToNextStage: () => {
+    // Clear the popup overlay completely
+    const container = document.getElementById("game-container");
+    container.innerHTML = ""; // This removes the popup
+
+    // Update canvas dimensions for current screen
+    UTILS.updateCanvasDimensions();
+    Game.setupCanvas();
+
+    // Reset player position and clear carrying
+    Game.state.player.x = CONFIG.PLAYER.START_X;
+    Game.state.player.y = CONFIG.PLAYER.START_Y;
+    Game.state.player.carrying = [];
+    Game.state.stamina = CONFIG.STAMINA.MAX;
+    Game.state.isSprinting = false;
+
+    // Clear monsters but keep bugs
+    Game.state.monsters = [];
+
+    // Show game UI and restart loop
+    Game.state.screen = "game";
+    Game.showGameUI();
+    Game.startGameLoop();
+  },
+
+  // Game over
+  gameOver: () => {
+    Game.state.screen = "game-over";
+    Game.hideGameUI();
+    EndingScreen.init(Game.state);
   },
 
   // Render game
@@ -1020,19 +842,14 @@ const Game = {
       Math.max(CONFIG.WORLD.CANVAS_WIDTH, CONFIG.WORLD.CANVAS_HEIGHT)
     );
 
-    if (Game.state.phase === "day") {
-      gradient.addColorStop(0, "#87CEEB");
-      gradient.addColorStop(1, "#4a90e2");
-    } else {
-      gradient.addColorStop(0, "#2c3e50");
-      gradient.addColorStop(1, "#1a1a2e");
-    }
+    gradient.addColorStop(0, "#87CEEB");
+    gradient.addColorStop(1, "#4a90e2");
 
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, CONFIG.WORLD.CANVAS_WIDTH, CONFIG.WORLD.CANVAS_HEIGHT);
 
     // World bounds
-    ctx.strokeStyle = Game.state.phase === "day" ? "#2c3e50" : "#4a90e2";
+    ctx.strokeStyle = "#2c3e50";
     ctx.lineWidth = 3;
     ctx.strokeRect(
       -Game.state.camera.x,
@@ -1047,11 +864,11 @@ const Game = {
     // Collection bin
     Game.renderCollectionBin(ctx);
 
-    if (Game.state.phase === "day") {
-      Game.renderBugs(ctx);
-    } else {
-      Game.renderMonsters(ctx);
-    }
+    // Bugs
+    Game.renderBugs(ctx);
+
+    // Monsters
+    Game.renderMonsters(ctx);
 
     // Player
     Game.renderPlayer(ctx);
@@ -1062,34 +879,6 @@ const Game = {
     const binX = Game.state.collectionBin.x - Game.state.camera.x;
     const binY = Game.state.collectionBin.y - Game.state.camera.y;
 
-    // Bin shadow
-    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-    ctx.fillRect(
-      binX - Game.state.collectionBin.size / 2 + 3,
-      binY - Game.state.collectionBin.size / 2 + 3,
-      Game.state.collectionBin.size,
-      Game.state.collectionBin.size
-    );
-
-    // Bin body
-    ctx.fillStyle = "#27ae60";
-    ctx.fillRect(
-      binX - Game.state.collectionBin.size / 2,
-      binY - Game.state.collectionBin.size / 2,
-      Game.state.collectionBin.size,
-      Game.state.collectionBin.size
-    );
-
-    // Bin outline
-    ctx.strokeStyle = "#1e8449";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(
-      binX - Game.state.collectionBin.size / 2,
-      binY - Game.state.collectionBin.size / 2,
-      Game.state.collectionBin.size,
-      Game.state.collectionBin.size
-    );
-
     // Bin image or emoji
     UTILS.drawImageOrEmoji(
       ctx,
@@ -1097,12 +886,12 @@ const Game = {
       "🗑️",
       binX,
       binY,
-      Game.state.collectionBin.size * 0.8,
-      Game.state.collectionBin.size * 0.8
+      Game.state.collectionBin.size,
+      Game.state.collectionBin.size
     );
   },
 
-  // Render bugs
+  // Render bugs (no circles)
   renderBugs: (ctx) => {
     Game.state.bugs.forEach((bug) => {
       if (!bug) return;
@@ -1119,24 +908,7 @@ const Game = {
       )
         return;
 
-      // Bug shadow
-      ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
-      ctx.beginPath();
-      ctx.arc(x + 3, y + 3, bug.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Bug body
-      ctx.fillStyle = CONFIG.BUG_TYPES[bug.type].color;
-      ctx.beginPath();
-      ctx.arc(x, y, bug.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Bug outline
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Bug image or emoji
+      // Bug image or emoji (no background circle)
       const imageKey = `bug_${CONFIG.BUG_TYPES[bug.type].image}`;
       const emoji = CONFIG.BUG_TYPES[bug.type].symbol;
       UTILS.drawImageOrEmoji(
@@ -1186,40 +958,7 @@ const Game = {
       ctx.closePath();
       ctx.fill();
 
-      // Vision cone outline
-      ctx.strokeStyle =
-        monster.alertLevel === 1
-          ? "rgba(255, 0, 0, 0.6)"
-          : "rgba(255, 255, 0, 0.4)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Monster shadow
-      ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-      ctx.beginPath();
-      ctx.arc(x + 4, y + 4, monster.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Monster body with unique colors per type
-      const colors = [
-        "#8b0000",
-        "#4b0082",
-        "#006400",
-        "#8b4513",
-        "#2f4f4f",
-        "#800080",
-      ];
-      ctx.fillStyle = colors[monster.type] || "#8b0000";
-      ctx.beginPath();
-      ctx.arc(x, y, monster.size, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Monster outline
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.5)";
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      // Monster image based on original bug type
+      // Monster image
       const monsterImageKeys = [
         "firefly_monster",
         "beetle_monster",
@@ -1246,66 +985,35 @@ const Game = {
     });
   },
 
-  // Render player
+  // Render player (no circle)
   renderPlayer: (ctx) => {
     const playerX = Game.state.player.x - Game.state.camera.x;
     const playerY = Game.state.player.y - Game.state.camera.y;
 
-    // Player shadow
-    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
-    ctx.beginPath();
-    ctx.arc(playerX + 3, playerY + 3, Game.state.player.size, 0, Math.PI * 2);
-    ctx.fill();
+    // Player image based on stage
+    const imageKeys = ["", "jim_happy", "jim_armless", "jim_head_happy"];
+    const imageKey = imageKeys[Game.state.stage];
+    const emoji = "👨";
 
-    // Player body
-    ctx.fillStyle = "#ff6b6b";
-    ctx.beginPath();
-    ctx.arc(playerX, playerY, Game.state.player.size, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Player outline
-    ctx.strokeStyle = "#d63031";
-    ctx.lineWidth = 3;
-    ctx.stroke();
-
-    // Player image or emoji - using jim_1 key
     UTILS.drawImageOrEmoji(
       ctx,
-      "jim_1",
-      "👨",
+      imageKey,
+      emoji,
       playerX,
       playerY,
       Game.state.player.size * 1.6,
       Game.state.player.size * 1.6
     );
 
-    // Carried bug
-    if (Game.state.player.carrying) {
-      const bugType = Game.state.player.carrying.type;
+    // Carried bugs above player
+    Game.state.player.carrying.forEach((carriedBug, index) => {
+      const bugX = playerX + (index - 1) * 25;
+      const bugY = playerY - 50;
 
-      // Carried bug background
-      ctx.fillStyle = CONFIG.BUG_TYPES[bugType].color;
-      ctx.beginPath();
-      ctx.arc(playerX, playerY - 50, 15, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.strokeStyle = "rgba(0, 0, 0, 0.3)";
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Carried bug image or emoji
-      const imageKey = `bug_${CONFIG.BUG_TYPES[bugType].image}`;
-      const emoji = CONFIG.BUG_TYPES[bugType].symbol;
-      UTILS.drawImageOrEmoji(
-        ctx,
-        imageKey,
-        emoji,
-        playerX,
-        playerY - 50,
-        24,
-        24
-      );
-    }
+      const imageKey = `bug_${CONFIG.BUG_TYPES[carriedBug.type].image}`;
+      const emoji = CONFIG.BUG_TYPES[carriedBug.type].symbol;
+      UTILS.drawImageOrEmoji(ctx, imageKey, emoji, bugX, bugY, 24, 24);
+    });
   },
 
   // Update UI
@@ -1314,11 +1022,11 @@ const Game = {
     const scoreDisplay = document.getElementById("score-display");
     if (scoreDisplay) scoreDisplay.textContent = Game.state.score;
 
-    // Update day counter
-    const dayCounter = document.getElementById("day-counter");
-    if (dayCounter) dayCounter.textContent = Game.state.day;
+    // Update stage
+    const stageDisplay = document.getElementById("stage-display");
+    if (stageDisplay) stageDisplay.textContent = Game.state.stage;
 
-    // Update coordinates display
+    // Update coordinates
     const coordinatesDisplay = document.getElementById("coordinates-display");
     if (coordinatesDisplay) {
       const coords = UTILS.worldToDisplayCoords(
@@ -1328,52 +1036,21 @@ const Game = {
       coordinatesDisplay.textContent = `(${coords.x}, ${coords.y})`;
     }
 
-    // Update carrying status
+    // Update carrying count
     const carryingDisplay = document.getElementById("carrying-display");
     if (carryingDisplay) {
-      carryingDisplay.textContent = Game.state.player.carrying
-        ? `${Game.state.player.carrying.name}` // Removed emoji
-        : "None";
+      const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
+      carryingDisplay.textContent = `${Game.state.player.carrying.length}/${stageConfig.maxCarrying}`;
     }
 
-    // Update current order
-    const orderDisplay = document.getElementById("current-order-display");
-    if (orderDisplay && Game.state.currentOrder) {
-      const orderText = OrderGenerator.getOrderDisplayText(
-        Game.state.currentOrder
-      );
-      orderDisplay.innerHTML = orderText.remainingHTML; // Show remaining bugs with images
-    }
-
-    // Update phase timer
-    const phaseTimer = document.getElementById("phase-timer");
-    const timerBarFill = document.getElementById("timer-bar-fill");
-
-    if (phaseTimer && timerBarFill) {
-      if (Game.state.phase === "day") {
-        const timeLeft = Math.max(0, Math.ceil(Game.state.daylightTime));
-        phaseTimer.textContent = `Daylight: ${timeLeft}s`;
-        phaseTimer.className = timeLeft <= 10 ? "timer warning" : "timer";
-
-        const percent = Math.max(
-          0,
-          (Game.state.daylightTime / CONFIG.TIME.DAY_DURATION) * 100
-        );
-        timerBarFill.style.width = percent + "%";
-        timerBarFill.className =
-          timeLeft <= 10 ? "timer-bar-fill warning" : "timer-bar-fill";
-      } else {
-        const timeLeft = Math.max(0, Math.ceil(Game.state.nightTime));
-        phaseTimer.textContent = `Night: ${timeLeft}s`;
-        phaseTimer.className = timeLeft <= 5 ? "timer warning" : "timer";
-
-        const percent = Math.max(
-          0,
-          (Game.state.nightTime / CONFIG.TIME.NIGHT_DURATION) * 100
-        );
-        timerBarFill.style.width = percent + "%";
-        timerBarFill.className = "timer-bar-fill night";
-      }
+    // Update stamina bar
+    const staminaBarFill = document.getElementById("stamina-bar-fill");
+    if (staminaBarFill) {
+      const percent = (Game.state.stamina / CONFIG.STAMINA.MAX) * 100;
+      staminaBarFill.style.width = percent + "%";
+      staminaBarFill.className = Game.state.isSprinting
+        ? "stamina-bar-fill sprinting"
+        : "stamina-bar-fill";
     }
   },
 
@@ -1403,30 +1080,18 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // Handle page visibility changes to pause/resume music
 document.addEventListener("visibilitychange", () => {
-  const allMusicTracks = [
-    CONFIG.AUDIO.BACKGROUND_MUSIC_DAY,
-    CONFIG.AUDIO.BACKGROUND_MUSIC_NIGHT,
-    CONFIG.AUDIO.BACKGROUND_MUSIC_DEATH,
-  ];
-
   if (document.hidden) {
-    // Pause all music tracks
-    allMusicTracks.forEach((trackId) => {
-      const audio = document.getElementById(trackId);
-      if (audio && !audio.paused) {
-        audio.pause();
-      }
-    });
+    // Pause music
+    const audio = document.getElementById(CONFIG.AUDIO.BACKGROUND_MUSIC);
+    if (audio && !audio.paused) {
+      audio.pause();
+    }
   } else {
-    // Resume the current track
-    if (Game.state && Game.state.currentMusicTrack) {
-      const currentAudio = document.getElementById(
-        Game.state.currentMusicTrack
-      );
-      if (currentAudio) {
-        currentAudio
-          .play()
-          .catch((e) => console.log("Music resume failed:", e));
+    // Resume music if game is running
+    if (Game.state && Game.state.screen === "game") {
+      const audio = document.getElementById(CONFIG.AUDIO.BACKGROUND_MUSIC);
+      if (audio) {
+        audio.play().catch((e) => console.log("Music resume failed:", e));
       }
     }
   }

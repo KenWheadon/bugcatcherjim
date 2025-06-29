@@ -1,4 +1,4 @@
-// Bug Catcher Jim - Game configuration and constants
+// Bug Catcher Jim - Game configuration and constants (Game Jam Pivot)
 const CONFIG = {
   // Game world settings
   WORLD: {
@@ -14,9 +14,23 @@ const CONFIG = {
   // Player settings
   PLAYER: {
     SIZE: 80, // Doubled from 40
-    SPEED: 4, // Slightly increased
+    SPEED: 4, // Normal speed
+    SPRINT_MULTIPLIER: 2, // 2x speed when sprinting
+    HEAD_SPEED_MULTIPLIER: 0.75, // 0.75x speed when carrying as head
     START_X: 1200, // Center of larger world
     START_Y: 900, // Center of larger world
+    MAX_CARRYING: {
+      STAGE_1: 3, // Can carry 3 bugs with arms
+      STAGE_2: 1, // Can carry 1 bug without arms
+      STAGE_3: 1, // Can carry 1 bug as head only
+    },
+  },
+
+  // Stamina system
+  STAMINA: {
+    MAX: 50,
+    GAIN_PER_BUG: 5,
+    DRAIN_PER_SECOND: 20, // 1 stamina every 3 seconds at 60fps (60/3 = 20 frames)
   },
 
   // Bug settings
@@ -25,6 +39,7 @@ const CONFIG = {
     SIZE: 60, // Doubled from 30
     MAX_SPEED: 2,
     SPAWN_MARGIN: 100,
+    EDGE_SPAWN_DISTANCE: 150, // Distance from edge to spawn new bugs/monsters
   },
 
   // Collection bin
@@ -34,16 +49,8 @@ const CONFIG = {
     Y: 900, // Center of larger world
   },
 
-  // Day/Night cycle
-  TIME: {
-    DAY_DURATION: 60, // 60 seconds
-    NIGHT_DURATION: 30, // 30 seconds
-    RESPONSE_TIME: 2000, // 2 seconds to show responses
-  },
-
   // Monster settings
   MONSTERS: {
-    COUNT: 6,
     SIZE: 50, // Increased from 20
     VISION_RANGES: [180, 220, 260, 200, 240, 300], // Larger vision ranges for 6 monster types
     CONE_ANGLES: [
@@ -65,10 +72,29 @@ const CONFIG = {
     ], // 6 unique hunt patterns
   },
 
-  // Game progression
-  DEATH_CONDITIONS: {
-    CARRYING_AT_NIGHT: true,
-    MONSTER_COLLISION: true,
+  // Game stages
+  STAGES: {
+    STAGE_1: {
+      name: "Full Body",
+      image: "jim-happy.png",
+      canSprint: true,
+      maxCarrying: 3,
+      speedMultiplier: 1,
+    },
+    STAGE_2: {
+      name: "Armless",
+      image: "jim-armless.png",
+      canSprint: true,
+      maxCarrying: 1,
+      speedMultiplier: 1,
+    },
+    STAGE_3: {
+      name: "Head Only",
+      image: "jim-head-happy.png",
+      canSprint: false,
+      maxCarrying: 1,
+      speedMultiplier: 0.75, // Only when carrying
+    },
   },
 
   // Audio settings
@@ -83,7 +109,9 @@ const CONFIG = {
 
     // Game element images
     COLLECTION_BIN: "images/collection-bin.png",
-    JIM_PLAYER: "images/jim-1.png", // Updated to use jim-1.png
+    JIM_HAPPY: "images/jim-happy.png", // Stage 1
+    JIM_ARMLESS: "images/jim-armless.png", // Stage 2
+    JIM_HEAD_HAPPY: "images/jim-head-happy.png", // Stage 3
     MONSTER: "images/monster.png",
     // Individual monster images for each bug type
     FIREFLY_MONSTER: "images/firefly-monster.png",
@@ -96,9 +124,6 @@ const CONFIG = {
     // UI icons
     BUG_ICON: "images/bug-icon.png",
     TROPHY_ICON: "images/trophy-icon.png",
-    ACHIEVEMENT_UNLOCK: "images/achievement-unlock.png",
-    STATS_ICON: "images/stats-icon.png",
-    CONTROLS_ICON: "images/controls-icon.png",
 
     // Particle images
     HAND_PARTICLE: "images/hand.png",
@@ -106,40 +131,60 @@ const CONFIG = {
   },
 
   AUDIO: {
-    BACKGROUND_MUSIC_DAY: "background-music-day",
-    BACKGROUND_MUSIC_NIGHT: "background-music-night",
-    BACKGROUND_MUSIC_DEATH: "background-music-death",
-    COLLECT_SOUND: "collect-sound", // Changed from choice-sound
-    UI_HOVER: "ui-hover", // Changed from choice-hover
-    ORDER_COMPLETE: "order-complete", // Changed from airplane-ding
-    TIMER_TICK: "timer-tick",
-    MONSTER_SPAWN: "monster-spawn", // Changed from rage-increase
+    BACKGROUND_MUSIC: "background-music",
+    COLLECT_SOUND: "collect-sound",
+    UI_HOVER: "ui-hover",
+    DEPOSIT_SOUND: "deposit-sound",
+    MONSTER_SPAWN: "monster-spawn",
     DEATH_SOUND: "death-sound",
-    DAY_TRANSITION: "day-transition", // Changed from landing-sound
+    STAGE_TRANSITION: "stage-transition",
+    SPRINT_START: "sprint-start",
+    SPRINT_STOP: "sprint-stop",
   },
 
-  // Bug types with image paths
+  // Bug types with point values and image paths
   BUG_TYPES: [
-    { name: "Firefly", color: "#ffeb3b", symbol: "✨", image: "firefly.png" },
-    { name: "Beetle", color: "#8bc34a", symbol: "🪲", image: "beetle.png" },
+    {
+      name: "Firefly",
+      color: "#ffeb3b",
+      symbol: "✨",
+      image: "firefly.png",
+      points: 5,
+    },
+    {
+      name: "Beetle",
+      color: "#8bc34a",
+      symbol: "🪲",
+      image: "beetle.png",
+      points: 10,
+    },
     {
       name: "Butterfly",
       color: "#e91e63",
       symbol: "🦋",
       image: "butterfly.png",
+      points: 15,
     },
-    { name: "Ladybug", color: "#f44336", symbol: "🐞", image: "ladybug.png" },
+    {
+      name: "Ladybug",
+      color: "#f44336",
+      symbol: "🐞",
+      image: "ladybug.png",
+      points: 25,
+    },
     {
       name: "Grasshopper",
       color: "#4caf50",
       symbol: "🦗",
       image: "grasshopper.png",
+      points: 35,
     },
     {
       name: "Dragonfly",
       color: "#2196f3",
       symbol: "🪃",
       image: "dragonfly.png",
+      points: 50,
     },
   ],
 
@@ -152,125 +197,30 @@ const CONFIG = {
       SIZE: 20,
       IMAGE: "hand.png",
     },
-    ORDER_COMPLETE: {
-      COUNT: 12,
+    POINTS_GAINED: {
+      COUNT: 5,
       LIFETIME: 90, // frames
-      SPEED: 3,
-      SIZE: 24,
+      SPEED: 1,
+      SIZE: 16,
       IMAGE: "thumbs.png",
     },
   },
-
-  // Achievement system
-  ACHIEVEMENTS: {
-    FIRST_GAME: {
-      id: "first-game",
-      name: "First Hunt",
-      description: "Started your first bug catching adventure",
-      icon: "🐛",
-    },
-    FIRST_BUG: {
-      id: "first-bug",
-      name: "Bug Collector",
-      description: "Caught your first bug",
-      icon: "🦋",
-    },
-    FIRST_ORDER: {
-      id: "first-order",
-      name: "Order Complete",
-      description: "Completed your first order for Linda",
-      icon: "📋",
-    },
-    FIVE_ORDERS: {
-      id: "five-orders",
-      name: "Busy Bee",
-      description: "Completed 5 orders",
-      icon: "🐝",
-    },
-    FIRST_DAY: {
-      id: "first-day",
-      name: "Day Survivor",
-      description: "Survived your first complete day",
-      icon: "☀️",
-    },
-    FIRST_NIGHT: {
-      id: "first-night",
-      name: "Night Survivor",
-      description: "Survived your first night",
-      icon: "🌙",
-    },
-    FIREFLY: {
-      id: "firefly",
-      name: "Firefly Hunter",
-      description: "Caught a Firefly",
-      icon: "✨",
-    },
-    BEETLE: {
-      id: "beetle",
-      name: "Beetle Collector",
-      description: "Caught a Beetle",
-      icon: "🪲",
-    },
-    BUTTERFLY: {
-      id: "butterfly",
-      name: "Butterfly Net",
-      description: "Caught a Butterfly",
-      icon: "🦋",
-    },
-    LADYBUG: {
-      id: "ladybug",
-      name: "Lucky Catch",
-      description: "Caught a Ladybug",
-      icon: "🐞",
-    },
-    GRASSHOPPER: {
-      id: "grasshopper",
-      name: "Jump Shot",
-      description: "Caught a Grasshopper",
-      icon: "🦗",
-    },
-    DRAGONFLY: {
-      id: "dragonfly",
-      name: "Sky Hunter",
-      description: "Caught a Dragonfly",
-      icon: "🪃",
-    },
-    MONSTER_DEATH: {
-      id: "monster-death",
-      name: "Monster Meal",
-      description: "Got caught by a monster",
-      icon: "👹",
-    },
-    NIGHT_DEATH: {
-      id: "night-death",
-      name: "Caught Red-Handed",
-      description: "Was holding a bug when night fell",
-      icon: "🌃",
-    },
-    TEN_ORDERS: {
-      id: "ten-orders",
-      name: "Research Assistant",
-      description: "Completed 10 orders for Linda",
-      icon: "🔬",
-    },
-    SURVIVE_FIVE_NIGHTS: {
-      id: "survive-five-nights",
-      name: "Night Veteran",
-      description: "Survived 5 nights",
-      icon: "🌙",
-    },
-  },
-
-  // Achievement storage key
-  ACHIEVEMENT_STORAGE_KEY: "bug-catcher-jim-achievements",
 };
 
 // Utility functions (updated for Bug Catcher Jim)
 const UTILS = {
-  // Get Jim sprite path (updated from duck references)
-  getJimImagePath: (state = 0) => {
-    const clampedState = Math.max(0, Math.min(12, state));
-    return `${CONFIG.IMAGES.JIM_PREFIX}${clampedState}${CONFIG.IMAGES.JIM_EXTENSION}`;
+  // Get Jim sprite path based on stage
+  getJimImagePath: (stage = 1) => {
+    switch (stage) {
+      case 1:
+        return CONFIG.IMAGES.JIM_HAPPY;
+      case 2:
+        return CONFIG.IMAGES.JIM_ARMLESS;
+      case 3:
+        return CONFIG.IMAGES.JIM_HEAD_HAPPY;
+      default:
+        return CONFIG.IMAGES.JIM_HAPPY;
+    }
   },
 
   // Play audio with volume control
@@ -283,36 +233,13 @@ const UTILS = {
     }
   },
 
-  // Switch background music based on game phase
-  switchBackgroundMusic: (phase, currentTrack = null) => {
-    let newTrack;
+  // Switch background music
+  switchBackgroundMusic: (trackId) => {
+    // Stop all music tracks first
+    const allTracks = [CONFIG.AUDIO.BACKGROUND_MUSIC];
 
-    switch (phase) {
-      case "day":
-        newTrack = CONFIG.AUDIO.BACKGROUND_MUSIC_DAY;
-        break;
-      case "night":
-        newTrack = CONFIG.AUDIO.BACKGROUND_MUSIC_NIGHT;
-        break;
-      case "death":
-        newTrack = CONFIG.AUDIO.BACKGROUND_MUSIC_DEATH;
-        break;
-      default:
-        newTrack = CONFIG.AUDIO.BACKGROUND_MUSIC_DAY;
-    }
-
-    // Don't switch if already playing the correct track
-    if (currentTrack === newTrack) return newTrack;
-
-    // Stop all music tracks
-    const allTracks = [
-      CONFIG.AUDIO.BACKGROUND_MUSIC_DAY,
-      CONFIG.AUDIO.BACKGROUND_MUSIC_NIGHT,
-      CONFIG.AUDIO.BACKGROUND_MUSIC_DEATH,
-    ];
-
-    allTracks.forEach((trackId) => {
-      const audio = document.getElementById(trackId);
+    allTracks.forEach((id) => {
+      const audio = document.getElementById(id);
       if (audio) {
         audio.pause();
         audio.currentTime = 0;
@@ -320,13 +247,13 @@ const UTILS = {
     });
 
     // Start the new track
-    const newAudio = document.getElementById(newTrack);
+    const newAudio = document.getElementById(trackId);
     if (newAudio) {
       newAudio.volume = CONFIG.MUSIC_VOLUME;
       newAudio.play().catch((e) => console.log("Music switch failed:", e));
     }
 
-    return newTrack;
+    return trackId;
   },
 
   // Clamp value between min and max
@@ -369,6 +296,33 @@ const UTILS = {
       x: minX + margin + Math.random() * (maxX - minX - 2 * margin),
       y: minY + margin + Math.random() * (maxY - minY - 2 * margin),
     };
+  },
+
+  // Generate random position at edge of world
+  randomEdgePosition: (distance = CONFIG.BUGS.EDGE_SPAWN_DISTANCE) => {
+    const side = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+    let x, y;
+
+    switch (side) {
+      case 0: // Top
+        x = Math.random() * CONFIG.WORLD.WIDTH;
+        y = distance;
+        break;
+      case 1: // Right
+        x = CONFIG.WORLD.WIDTH - distance;
+        y = Math.random() * CONFIG.WORLD.HEIGHT;
+        break;
+      case 2: // Bottom
+        x = Math.random() * CONFIG.WORLD.WIDTH;
+        y = CONFIG.WORLD.HEIGHT - distance;
+        break;
+      case 3: // Left
+        x = distance;
+        y = Math.random() * CONFIG.WORLD.HEIGHT;
+        break;
+    }
+
+    return { x, y };
   },
 
   // Convert world coordinates to display coordinates (relative to center)
@@ -437,7 +391,9 @@ const UTILS = {
       // Game element images
       imagesToLoad.push(
         { key: "collection_bin", src: CONFIG.IMAGES.COLLECTION_BIN },
-        { key: "jim_1", src: CONFIG.IMAGES.JIM_PLAYER }, // Updated key name
+        { key: "jim_happy", src: CONFIG.IMAGES.JIM_HAPPY },
+        { key: "jim_armless", src: CONFIG.IMAGES.JIM_ARMLESS },
+        { key: "jim_head_happy", src: CONFIG.IMAGES.JIM_HEAD_HAPPY },
         { key: "monster", src: CONFIG.IMAGES.MONSTER },
         { key: "firefly_monster", src: CONFIG.IMAGES.FIREFLY_MONSTER },
         { key: "beetle_monster", src: CONFIG.IMAGES.BEETLE_MONSTER },
@@ -447,9 +403,6 @@ const UTILS = {
         { key: "dragonfly_monster", src: CONFIG.IMAGES.DRAGONFLY_MONSTER },
         { key: "bug_icon", src: CONFIG.IMAGES.BUG_ICON },
         { key: "trophy_icon", src: CONFIG.IMAGES.TROPHY_ICON },
-        { key: "achievement_unlock", src: CONFIG.IMAGES.ACHIEVEMENT_UNLOCK },
-        { key: "stats_icon", src: CONFIG.IMAGES.STATS_ICON },
-        { key: "controls_icon", src: CONFIG.IMAGES.CONTROLS_ICON },
         { key: "hand_particle", src: CONFIG.IMAGES.HAND_PARTICLE },
         { key: "thumbs_particle", src: CONFIG.IMAGES.THUMBS_PARTICLE }
       );
@@ -464,9 +417,6 @@ const UTILS = {
         img.onload = () => {
           UTILS.imageCache.set(imageInfo.key, img);
           loadedCount++;
-          console.log(
-            `Loaded: ${imageInfo.key} (${loadedCount}/${totalCount})`
-          );
 
           if (loadedCount === totalCount) {
             UTILS.imagesLoaded = true;

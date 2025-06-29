@@ -1,24 +1,12 @@
-// Bug Catcher Jim - Game messages and UI text
+// Bug Catcher Jim - Game messages and UI text (Game Jam Pivot)
 const MESSAGES = {
   // Game over messages
   ENDINGS: {
-    MONSTER_DEATH: {
-      title: "MONSTER MEAL",
+    FINAL_GAME_OVER: {
+      title: "GAME OVER",
       message:
-        "A creature of the night found you. Jim becomes part of the ecosystem in a very literal way.",
+        "You've been completely consumed by the wilderness, but what a journey it was!",
       color: "#ff0000",
-    },
-    NIGHT_DEATH: {
-      title: "CAUGHT RED-HANDED",
-      message:
-        "You were holding a bug when night fell. The transformation was... unpleasant.",
-      color: "#ff6600",
-    },
-    SURVIVED: {
-      title: "BUG HUNTER EXTRAORDINAIRE",
-      message:
-        "You successfully helped Linda with her research! The bugs and monsters return to their eternal dance.",
-      color: "#00ff00",
     },
   },
 
@@ -26,157 +14,59 @@ const MESSAGES = {
   UI: {
     GAME_TITLE: "Bug Catcher Jim",
     RESEARCH_STATION: "Research Station Alpha",
-    TIMER_LABEL: "Daylight:",
-    NIGHT_TIMER_LABEL: "Survive the Night!",
-    START_DESCRIPTION: `Help Jim catch bugs for Linda's research orders!
-Collect the right bugs during the day and deposit them in the collection bin.
-But when night falls, drop everything and hide - the bugs become something much more dangerous.
-Survive until dawn to continue your work.`,
+    START_DESCRIPTION: `Catch bugs and drop them in the collection bin for points!
+Each bug type is worth different points (5-50).
+You can carry multiple bugs at once - but watch out for monsters!
+Use SPACE to sprint (consumes stamina).`,
     START_BUTTON: "Start Hunting",
     RESTART_BUTTON: "Hunt Again",
     SCORE_LABEL: "Score:",
-    CURRENT_ORDER_LABEL: "Current Order:",
+    STAGE_LABEL: "Stage:",
     CARRYING_LABEL: "Carrying:",
-    DAY_LABEL: "Day:",
-    ORDERS_COMPLETED_LABEL: "Orders Completed:",
-    DAYS_SURVIVED_LABEL: "Days Survived:",
-  },
-
-  // Order generation messages
-  ORDERS: {
-    LINDA_INTRO: "Linda needs you to catch specific bugs for her research.",
-    ORDER_PREFIX: "Research Order #",
-    ORDER_INTRO: "Please collect: ",
-    HUNT_BUTTON: "Start Hunting!",
-    ORDER_COMPLETE: "Order Complete!",
-    NEW_ORDER: "New research request from Linda",
+    STAMINA_LABEL: "Stamina:",
+    POSITION_LABEL: "Position:",
   },
 
   // Game state messages
   GAME_STATES: {
-    DAY_PHASE: "Day - Catch bugs and complete orders",
-    NIGHT_PHASE: "Night - Survive until dawn!",
-    ORDER_POPUP: "New research order from Linda",
+    STAGE_1: "Stage 1 - Full Body",
+    STAGE_2: "Stage 2 - Armless",
+    STAGE_3: "Stage 3 - Head Only",
     GAME_OVER: "Game Over",
-    PAUSED: "Game Paused",
+  },
+
+  // Stage transition messages
+  STAGE_TRANSITIONS: {
+    STAGE_2: {
+      title: "You were mauled - but made it through!",
+      message:
+        "Your arms are gone, but you can still catch bugs! You can now only hold 1 bug at a time.",
+    },
+    STAGE_3: {
+      title: "You were mauled...again...",
+      message:
+        "Now you're just a head! You move slower when carrying bugs and can't sprint.",
+    },
   },
 
   // Tutorial messages
   TUTORIAL: {
     MOVEMENT: "Use WASD or Arrow Keys to move Jim around",
     COLLECTION: "Walk into bugs to collect them",
-    DEPOSIT: "Walk into the collection bin to deposit bugs",
-    SURVIVAL: "Don't get caught by monsters at night!",
-    NIGHT_WARNING: "Drop any bugs you're carrying before night falls!",
-    ORDER_COMPLETION:
-      "Complete Linda's orders by collecting the requested bugs",
-  },
-};
-
-// Order generation system
-const OrderGenerator = {
-  // Generate a new order based on progress
-  generateOrder: (completedOrders) => {
-    const orderSize = Math.min(
-      Math.max(1, completedOrders + 1),
-      CONFIG.BUG_TYPES.length
-    );
-    const order = [];
-
-    // Create array of bug type indices
-    const availableBugs = [...Array(CONFIG.BUG_TYPES.length).keys()];
-
-    // Randomly select bugs for the order
-    for (let i = 0; i < orderSize; i++) {
-      const randomIndex = Math.floor(Math.random() * availableBugs.length);
-      const bugType = availableBugs.splice(randomIndex, 1)[0];
-      order.push(bugType);
-    }
-
-    return {
-      bugs: order,
-      collected: [],
-      id: completedOrders + 1,
-    };
+    DEPOSIT: "Walk into the collection bin to deposit bugs for points",
+    SPRINTING: "Hold SPACE to sprint (uses stamina)",
+    STAMINA: "Catch bugs to gain stamina",
+    SURVIVAL: "Avoid monsters or they'll maul you!",
+    STAGES: "Each mauling advances you to the next stage with new challenges",
   },
 
-  // Check if order is complete
-  isOrderComplete: (order) => {
-    const required = [...order.bugs].sort();
-    const collected = [...order.collected].sort();
-
-    if (required.length !== collected.length) return false;
-
-    for (let i = 0; i < required.length; i++) {
-      if (required[i] !== collected[i]) return false;
-    }
-
-    return true;
-  },
-
-  // Get order display text with bug images
-  getOrderDisplayText: (order) => {
-    if (!order) return "No active order";
-
-    const neededText = order.bugs
-      .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
-      .join(", ");
-
-    const neededHTML = order.bugs
-      .map((bugIndex) => {
-        const bugType = CONFIG.BUG_TYPES[bugIndex];
-        return `<span class="bug-item">
-          <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 100%; vertical-align: middle; margin-right: 5px;">
-          ${bugType.name}
-        </span>`;
-      })
-      .join(", ");
-
-    const collectedText =
-      order.collected.length > 0
-        ? order.collected
-            .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
-            .join(", ")
-        : "";
-
-    const collectedHTML =
-      order.collected.length > 0
-        ? order.collected
-            .map((bugIndex) => {
-              const bugType = CONFIG.BUG_TYPES[bugIndex];
-              return `<span class="bug-item">
-                <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 3px;">
-                ${bugType.name}
-              </span>`;
-            })
-            .join(", ")
-        : "";
-
-    const remainingBugs = order.bugs.filter(
-      (bugType) => !order.collected.includes(bugType)
-    );
-    const remainingHTML =
-      remainingBugs.length > 0
-        ? remainingBugs
-            .map((bugIndex) => {
-              const bugType = CONFIG.BUG_TYPES[bugIndex];
-              return `<span class="bug-item">
-              <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 3px;">
-              ${bugType.name}
-            </span>`;
-            })
-            .join(", ")
-        : "Order Complete!";
-
-    return {
-      needed: neededText,
-      neededHTML: neededHTML,
-      collected: collectedText,
-      collectedHTML: collectedHTML,
-      remaining: remainingBugs
-        .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
-        .join(", "),
-      remainingHTML: remainingHTML,
-    };
+  // Bug point values for display
+  BUG_POINTS: {
+    FIREFLY: "5 pts",
+    BEETLE: "10 pts",
+    BUTTERFLY: "15 pts",
+    LADYBUG: "25 pts",
+    GRASSHOPPER: "35 pts",
+    DRAGONFLY: "50 pts",
   },
 };

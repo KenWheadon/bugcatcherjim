@@ -1,20 +1,7 @@
-// Bug Catcher Jim - Ending screen component
+// Bug Catcher Jim - Ending screen component (Game Jam Pivot)
 const EndingScreen = {
-  render: (gameState, endingReason) => {
-    let ending;
-
-    // Determine ending type
-    switch (endingReason) {
-      case "monster-death":
-        ending = MESSAGES.ENDINGS.MONSTER_DEATH;
-        break;
-      case "night-death":
-        ending = MESSAGES.ENDINGS.NIGHT_DEATH;
-        break;
-      default:
-        ending = MESSAGES.ENDINGS.SURVIVED;
-        break;
-    }
+  render: (gameState) => {
+    const ending = MESSAGES.ENDINGS.FINAL_GAME_OVER;
 
     return `
       <div class="ending-screen">
@@ -22,45 +9,60 @@ const EndingScreen = {
           <h1 class="ending-title" style="color: ${ending.color}">
             ${ending.title}
           </h1>
-          <div class="jim-display final-jim">
-            <img src="${UTILS.getJimImagePath(
-              endingReason === "monster-death" || endingReason === "night-death"
-                ? 12
-                : 0
-            )}" 
-                 alt="Final Jim" 
-                 class="jim-image final-jim-image" />
-          </div>
           <p class="ending-message">${ending.message}</p>
-          <div class="final-stats">
-            <p><strong>${MESSAGES.UI.SCORE_LABEL}</strong> ${
-      gameState.score
-    }</p>
-            <p><strong>${MESSAGES.UI.ORDERS_COMPLETED_LABEL}</strong> ${
-      gameState.completedOrders
-    }</p>
-            <p><strong>${MESSAGES.UI.DAYS_SURVIVED_LABEL}</strong> ${
-      gameState.day
-    }</p>
-            <p><strong>Phase:</strong> ${
-              gameState.phase === "day" ? "Day" : "Night"
-            }</p>
-            ${
-              gameState.player.carrying
-                ? `<p><strong>Was Carrying:</strong> ${
-                    gameState.player.carrying.name
-                  } ${
-                    CONFIG.BUG_TYPES[gameState.player.carrying.type].symbol
-                  }</p>`
-                : ""
-            }
-          </div>
-          <div class="ending-achievements" id="ending-achievements-container">
-            <h3>🏆 Recent Achievements</h3>
-            <div id="recent-achievements">
-              <!-- Will be populated by JavaScript -->
+          
+          <div class="stage-results">
+            <h2>Your Journey</h2>
+            
+            <div class="stage-result">
+              <div class="stage-info">
+                <img src="${UTILS.getJimImagePath(
+                  1
+                )}" alt="Stage 1 Jim" class="stage-jim-image" />
+                <div class="stage-details">
+                  <h3>Stage 1 - Full Body</h3>
+                  <p>Could carry 3 bugs and sprint freely</p>
+                  <p class="stage-score">Score: ${gameState.stageScores[0]}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="stage-result">
+              <div class="stage-info">
+                <img src="${UTILS.getJimImagePath(
+                  2
+                )}" alt="Stage 2 Jim" class="stage-jim-image" />
+                <div class="stage-details">
+                  <h3>Stage 2 - Armless</h3>
+                  <p>Could carry 1 bug but still sprint</p>
+                  <p class="stage-score">Score: ${gameState.stageScores[1]}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div class="stage-result">
+              <div class="stage-info">
+                <img src="${UTILS.getJimImagePath(
+                  3
+                )}" alt="Stage 3 Jim" class="stage-jim-image" />
+                <div class="stage-details">
+                  <h3>Stage 3 - Head Only</h3>
+                  <p>Could carry 1 bug, slower when carrying, no sprint</p>
+                  <p class="stage-score">Score: ${gameState.stageScores[2]}</p>
+                </div>
+              </div>
             </div>
           </div>
+          
+          <div class="final-stats">
+            <h2>Final Results</h2>
+            <p><strong>Total Score:</strong> ${gameState.score}</p>
+            <p><strong>Final Stage Reached:</strong> ${gameState.stage}</p>
+            <p><strong>Bugs Currently Carrying:</strong> ${
+              gameState.player.carrying.length
+            }</p>
+          </div>
+          
           <button id="restart-button" class="restart-button">
             ${MESSAGES.UI.RESTART_BUTTON}
           </button>
@@ -85,77 +87,14 @@ const EndingScreen = {
     }
   },
 
-  displayRecentAchievements: () => {
-    const container = document.getElementById("recent-achievements");
-    if (!container || typeof AchievementManager === "undefined") return;
-
-    // Get recently unlocked achievements (this session)
-    const allAchievements = AchievementManager.getAllAchievements();
-    const recentlyUnlocked = allAchievements.filter(
-      (achievement) => achievement.unlocked
-    );
-
-    if (recentlyUnlocked.length === 0) {
-      container.innerHTML =
-        '<p style="opacity: 0.7; font-style: italic;">No achievements unlocked yet</p>';
-      return;
-    }
-
-    // Show last 3 achievements - create static HTML to prevent flickering
-    const recent = recentlyUnlocked.slice(-3);
-    const achievementHTML = recent
-      .map(
-        (achievement) => `
-      <div class="recent-achievement">
-        <span class="achievement-icon">${achievement.icon}</span>
-        <div class="achievement-info">
-          <div class="achievement-name">${achievement.name}</div>
-          <div class="achievement-description">${achievement.description}</div>
-        </div>
-      </div>
-    `
-      )
-      .join("");
-
-    // Set innerHTML once to prevent flickering
-    container.innerHTML = achievementHTML;
-  },
-
-  init: (gameState, endingReason = "survived") => {
+  init: (gameState) => {
     const container = document.getElementById("game-container");
-    container.innerHTML = EndingScreen.render(gameState, endingReason);
-
-    // Display recent achievements immediately after rendering
-    EndingScreen.displayRecentAchievements();
+    container.innerHTML = EndingScreen.render(gameState);
 
     // Attach event listeners
     EndingScreen.attachEventListeners();
 
-    // Play appropriate ending sound and music
-    if (endingReason === "monster-death" || endingReason === "night-death") {
-      UTILS.playAudio(CONFIG.AUDIO.DEATH_SOUND);
-      // Switch to death music and track it
-      const deathMusic = UTILS.switchBackgroundMusic("death");
-      if (typeof AchievementManager !== "undefined") {
-        AchievementManager.trackMusicHeard(deathMusic);
-      }
-    } else {
-      UTILS.playAudio(CONFIG.AUDIO.DAY_TRANSITION);
-      // Keep current music from game state but ensure it's tracked
-      if (
-        gameState.currentMusicTrack &&
-        typeof AchievementManager !== "undefined"
-      ) {
-        AchievementManager.trackMusicHeard(gameState.currentMusicTrack);
-      }
-    }
-
-    // Update achievement drawer if it's open (but don't trigger updates)
-    if (typeof AchievementDrawer !== "undefined" && AchievementDrawer.isOpen) {
-      // Don't call updateIfOpen to prevent flickering
-      console.log(
-        "Achievement drawer is open, but not updating to prevent flickering"
-      );
-    }
+    // Play death sound
+    UTILS.playAudio(CONFIG.AUDIO.DEATH_SOUND);
   },
 };
