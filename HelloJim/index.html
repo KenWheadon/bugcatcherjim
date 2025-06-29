@@ -1,455 +1,1248 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jim Clicking Game</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jim Clicking Game - Enhanced</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: "Courier New", monospace;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-            color: #e0e0e0;
-            min-height: 100vh;
-            overflow: hidden;
-            cursor: crosshair;
-        }
+      body {
+        font-family: "Courier New", monospace;
+        background: linear-gradient(
+          135deg,
+          #1a1a2e 0%,
+          #16213e 50%,
+          #0f3460 100%
+        );
+        color: #e0e0e0;
+        min-height: 100vh;
+        overflow: hidden;
+        cursor: crosshair;
+        position: relative;
+      }
 
-        #game-container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-        }
+      body::before {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="20" cy="20" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="80" cy="40" r="1" fill="rgba(255,255,255,0.1)"/><circle cx="40" cy="80" r="1" fill="rgba(255,255,255,0.1)"/></svg>');
+        animation: twinkle 4s infinite;
+        z-index: -1;
+      }
 
-        .jim-container {
-            position: relative;
-            text-align: center;
+      @keyframes twinkle {
+        0%,
+        100% {
+          opacity: 0.3;
         }
+        50% {
+          opacity: 0.8;
+        }
+      }
 
-        .jim-image {
-            max-width: 300px;
-            height: auto;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            user-select: none;
-        }
+      #game-container {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        transition: transform 0.1s ease;
+      }
 
-        .jim-image:hover {
-            transform: scale(1.05);
-            filter: brightness(1.2);
-        }
+      .screen-shake {
+        animation: screenShake 0.5s ease-in-out;
+      }
 
-        .dialogue-box {
-            background: rgba(0, 0, 0, 0.8);
-            border: 2px solid #fff;
-            border-radius: 10px;
-            padding: 20px;
-            margin: 20px;
-            max-width: 500px;
-            min-height: 80px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+      @keyframes screenShake {
+        0%,
+        100% {
+          transform: translate(0, 0);
         }
+        10% {
+          transform: translate(-5px, -5px);
+        }
+        20% {
+          transform: translate(5px, 5px);
+        }
+        30% {
+          transform: translate(-3px, 3px);
+        }
+        40% {
+          transform: translate(3px, -3px);
+        }
+        50% {
+          transform: translate(-2px, 2px);
+        }
+        60% {
+          transform: translate(2px, -2px);
+        }
+        70% {
+          transform: translate(-1px, 1px);
+        }
+        80% {
+          transform: translate(1px, -1px);
+        }
+        90% {
+          transform: translate(-1px, -1px);
+        }
+      }
 
-        .dialogue-text {
-            font-size: 1.2em;
-            text-align: center;
-            line-height: 1.4;
-        }
+      .jim-container {
+        position: relative;
+        text-align: center;
+      }
 
-        .hp-bar-container {
-            margin: 20px 0;
-            display: none;
-        }
+      .jim-image {
+        max-width: 300px;
+        height: auto;
+        cursor: pointer;
+        transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        user-select: none;
+        filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+      }
 
-        .hp-bar {
-            width: 200px;
-            height: 20px;
-            background: #333;
-            border: 2px solid #fff;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 0 auto;
-        }
+      .jim-image:hover {
+        transform: scale(1.05) rotate(1deg);
+        filter: drop-shadow(0 15px 30px rgba(255, 255, 255, 0.2))
+          brightness(1.2);
+      }
 
-        .hp-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #ff0000, #ff6600);
-            transition: width 0.3s ease;
-        }
+      .jim-image.clicked {
+        animation: clickPulse 0.3s ease-out;
+      }
 
-        .hp-text {
-            text-align: center;
-            margin-top: 5px;
-            font-weight: bold;
+      @keyframes clickPulse {
+        0% {
+          transform: scale(1);
         }
+        50% {
+          transform: scale(1.15) rotate(5deg);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
 
-        .flying-jim {
-            position: absolute !important;
-            transition: none !important;
-        }
+      .jim-image.damaged {
+        animation: damageShake 0.4s ease-in-out;
+        filter: drop-shadow(0 10px 20px rgba(255, 0, 0, 0.5)) hue-rotate(0deg);
+      }
 
-        .hopping-jim {
-            position: absolute !important;
-            animation: hop 1s infinite;
+      @keyframes damageShake {
+        0%,
+        100% {
+          transform: scale(1) rotate(0deg);
+          filter: hue-rotate(0deg);
         }
+        25% {
+          transform: scale(0.95) rotate(-2deg);
+          filter: hue-rotate(180deg);
+        }
+        75% {
+          transform: scale(1.05) rotate(2deg);
+          filter: hue-rotate(90deg);
+        }
+      }
 
-        @keyframes hop {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-20px); }
-        }
+      /* Beetle-specific animations */
+      .beetle-jim {
+        animation: beetleWiggle 2s infinite ease-in-out;
+      }
 
-        .particle {
-            position: absolute;
-            pointer-events: none;
-            z-index: 1000;
+      @keyframes beetleWiggle {
+        0%,
+        100% {
+          transform: rotate(-1deg) scale(1);
         }
+        25% {
+          transform: rotate(1deg) scale(1.02);
+        }
+        50% {
+          transform: rotate(-0.5deg) scale(0.98);
+        }
+        75% {
+          transform: rotate(0.5deg) scale(1.01);
+        }
+      }
 
-        .particle-container {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            pointer-events: none;
-            z-index: 999;
-        }
+      .beetle-jim:hover {
+        animation: beetleAngry 0.5s infinite ease-in-out;
+      }
 
-        @keyframes rainbow {
-            0% { filter: hue-rotate(0deg); }
-            100% { filter: hue-rotate(360deg); }
+      @keyframes beetleAngry {
+        0%,
+        100% {
+          transform: rotate(-3deg) scale(1.05);
         }
+        50% {
+          transform: rotate(3deg) scale(1.1);
+        }
+      }
 
-        .rainbow-effect {
-            animation: rainbow 2s infinite;
+      .beetle-jim.low-health {
+        animation: beetlePanic 0.3s infinite ease-in-out;
+        filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.8));
+      }
+
+      @keyframes beetlePanic {
+        0%,
+        100% {
+          transform: rotate(-5deg) scale(0.95);
         }
+        50% {
+          transform: rotate(5deg) scale(1.1);
+        }
+      }
+
+      /* Happy Jim animations */
+      .happy-jim {
+        animation: happyBounce 1.5s infinite ease-in-out;
+      }
+
+      @keyframes happyBounce {
+        0%,
+        100% {
+          transform: translateY(0) rotate(0deg);
+        }
+        50% {
+          transform: translateY(-10px) rotate(2deg);
+        }
+      }
+
+      /* Scared Jim animations */
+      .scared-jim {
+        animation: scaredShiver 0.1s infinite ease-in-out;
+      }
+
+      @keyframes scaredShiver {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-2px);
+        }
+        75% {
+          transform: translateX(2px);
+        }
+      }
+
+      /* Dead Jim animation */
+      .dead-jim {
+        animation: deadFloat 3s infinite ease-in-out;
+        filter: grayscale(50%) brightness(0.7);
+      }
+
+      @keyframes deadFloat {
+        0%,
+        100% {
+          transform: rotate(-5deg);
+        }
+        50% {
+          transform: rotate(5deg);
+        }
+      }
+
+      /* Invincible Jim animation */
+      .invincible-jim {
+        animation: invincibleGlow 1s infinite ease-in-out;
+      }
+
+      @keyframes invincibleGlow {
+        0%,
+        100% {
+          filter: drop-shadow(0 0 10px rgba(255, 255, 0, 0.5)) brightness(1);
+        }
+        50% {
+          filter: drop-shadow(0 0 30px rgba(255, 255, 0, 1)) brightness(1.3);
+        }
+      }
+
+      .dialogue-box {
+        background: linear-gradient(
+          135deg,
+          rgba(0, 0, 0, 0.9),
+          rgba(20, 20, 40, 0.9)
+        );
+        border: 3px solid #fff;
+        border-radius: 15px;
+        padding: 25px;
+        margin: 20px;
+        max-width: 600px;
+        min-height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+        animation: dialoguePulse 0.5s ease-out;
+      }
+
+      @keyframes dialoguePulse {
+        0% {
+          transform: scale(0.9);
+          opacity: 0;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .dialogue-text {
+        font-size: 1.3em;
+        text-align: center;
+        line-height: 1.5;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        animation: typewriter 1s ease-in-out;
+      }
+
+      @keyframes typewriter {
+        0% {
+          width: 0;
+          opacity: 0;
+        }
+        100% {
+          width: 100%;
+          opacity: 1;
+        }
+      }
+
+      .hp-bar-container {
+        margin: 25px 0;
+        display: none;
+        animation: hpBarSlideIn 0.5s ease-out;
+      }
+
+      @keyframes hpBarSlideIn {
+        0% {
+          transform: translateY(-20px);
+          opacity: 0;
+        }
+        100% {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      .hp-bar {
+        width: 250px;
+        height: 25px;
+        background: linear-gradient(135deg, #333, #555);
+        border: 3px solid #fff;
+        border-radius: 15px;
+        overflow: hidden;
+        margin: 0 auto;
+        box-shadow: inset 0 5px 10px rgba(0, 0, 0, 0.5);
+        position: relative;
+      }
+
+      .hp-bar::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 30%;
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(255, 255, 255, 0.3),
+          transparent
+        );
+        animation: hpShine 2s infinite;
+      }
+
+      @keyframes hpShine {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(100%);
+        }
+      }
+
+      .hp-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #ff4444, #ff8844, #ffaa44);
+        transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        position: relative;
+        box-shadow: 0 0 20px rgba(255, 68, 68, 0.5);
+      }
+
+      .hp-fill.critical {
+        background: linear-gradient(90deg, #ff0000, #cc0000);
+        animation: hpCritical 0.5s infinite ease-in-out;
+      }
+
+      @keyframes hpCritical {
+        0%,
+        100% {
+          box-shadow: 0 0 20px rgba(255, 0, 0, 0.8);
+        }
+        50% {
+          box-shadow: 0 0 40px rgba(255, 0, 0, 1);
+        }
+      }
+
+      .hp-text {
+        text-align: center;
+        margin-top: 8px;
+        font-weight: bold;
+        font-size: 1.1em;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+      }
+
+      .flying-jim {
+        position: absolute !important;
+        transition: all 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) !important;
+        animation: mothFlutter 0.3s infinite ease-in-out;
+      }
+
+      @keyframes mothFlutter {
+        0%,
+        100% {
+          transform: rotate(-2deg) scale(1);
+        }
+        50% {
+          transform: rotate(2deg) scale(1.02);
+        }
+      }
+
+      .hopping-jim {
+        position: absolute !important;
+        animation: chickenHop 0.8s infinite ease-in-out;
+      }
+
+      @keyframes chickenHop {
+        0%,
+        100% {
+          transform: translateY(0) rotate(-5deg);
+        }
+        50% {
+          transform: translateY(-30px) rotate(5deg);
+        }
+      }
+
+      .particle {
+        position: absolute;
+        pointer-events: none;
+        z-index: 1000;
+        animation: particleSpin 2s linear infinite;
+      }
+
+      @keyframes particleSpin {
+        0% {
+          transform: rotate(0deg) scale(1);
+        }
+        50% {
+          transform: rotate(180deg) scale(1.2);
+        }
+        100% {
+          transform: rotate(360deg) scale(1);
+        }
+      }
+
+      .particle-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        z-index: 999;
+      }
+
+      .click-effect {
+        position: absolute;
+        pointer-events: none;
+        color: #fff;
+        font-size: 2em;
+        font-weight: bold;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        animation: clickEffectFloat 1s ease-out forwards;
+        z-index: 100;
+      }
+
+      @keyframes clickEffectFloat {
+        0% {
+          transform: scale(0) translateY(0);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.2) translateY(-30px);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1) translateY(-60px);
+          opacity: 0;
+        }
+      }
+
+      .rainbow-effect {
+        animation: rainbow 1s infinite;
+      }
+
+      @keyframes rainbow {
+        0% {
+          filter: hue-rotate(0deg) saturate(1.5);
+        }
+        25% {
+          filter: hue-rotate(90deg) saturate(1.8);
+        }
+        50% {
+          filter: hue-rotate(180deg) saturate(2);
+        }
+        75% {
+          filter: hue-rotate(270deg) saturate(1.8);
+        }
+        100% {
+          filter: hue-rotate(360deg) saturate(1.5);
+        }
+      }
+
+      .progress-bar {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 300px;
+        height: 8px;
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 4px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        transition: opacity 1s ease-out;
+      }
+
+      .progress-bar.fade-out {
+        opacity: 0;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #00ff88, #00ccff, #8844ff);
+        transition: width 0.3s ease;
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+      }
+
+      .combo-counter {
+        position: fixed;
+        top: 50px;
+        right: 30px;
+        font-size: 1.5em;
+        font-weight: bold;
+        color: #ffff00;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+        animation: comboPulse 0.5s ease-out;
+      }
+
+      @keyframes comboPulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.2);
+        }
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="progress-bar">
+      <div id="progress-fill" class="progress-fill"></div>
+    </div>
+
+    <div id="combo-counter" class="combo-counter" style="display: none"></div>
+
     <div id="game-container">
-        <div class="jim-container">
-            <img id="jim-image" class="jim-image" src="jim1.png" alt="Jim">
-            <div id="dialogue-box" class="dialogue-box">
-                <div id="dialogue-text" class="dialogue-text">Click me!</div>
-            </div>
-            <div id="hp-bar-container" class="hp-bar-container">
-                <div class="hp-bar">
-                    <div id="hp-fill" class="hp-fill"></div>
-                </div>
-                <div id="hp-text" class="hp-text"></div>
-            </div>
+      <div class="jim-container">
+        <img
+          id="jim-image"
+          class="jim-image happy-jim"
+          src="jim1.png"
+          alt="Jim"
+        />
+        <div id="dialogue-box" class="dialogue-box">
+          <div id="dialogue-text" class="dialogue-text">
+            Click me to begin this wild adventure!
+          </div>
         </div>
+        <div id="hp-bar-container" class="hp-bar-container">
+          <div class="hp-bar">
+            <div id="hp-fill" class="hp-fill"></div>
+          </div>
+          <div id="hp-text" class="hp-text"></div>
+        </div>
+      </div>
     </div>
 
     <div id="particle-container" class="particle-container"></div>
 
     <script>
-        class JimGame {
-            constructor() {
-                this.currentJim = 1;
-                this.maxJim = 22;
-                this.hp = 0;
-                this.maxHp = 0;
-                this.clicksRequired = 1;
-                this.currentClicks = 0;
-                this.isMoving = false;
-                this.moveInterval = null;
-                this.particles = [];
-                
-                this.jimImage = document.getElementById('jim-image');
-                this.dialogueBox = document.getElementById('dialogue-box');
-                this.dialogueText = document.getElementById('dialogue-text');
-                this.hpContainer = document.getElementById('hp-bar-container');
-                this.hpFill = document.getElementById('hp-fill');
-                this.hpText = document.getElementById('hp-text');
-                this.particleContainer = document.getElementById('particle-container');
-                
-                this.dialogues = {
-                    1: "Hello there! I'm Jim! Click me to see what happens!",
-                    2: "Oh no! You're going to click me! I'm so scared! (wink wink)",
-                    3: "Ow! That hurt! (not really)",
-                    4: "Ouch! You're so mean! (this is fun though)",
-                    5: "Agh! I'm getting weaker! (totally fake)",
-                    6: "Haha! Just kidding! You can't actually hurt me!",
-                    7: "I'm invincible! Your clicks are powerless!",
-                    8: "Bleh... I'm dead... (just pretending)",
-                    9: "Even as just a head, I cannot die!",
-                    10: "Seriously, I'm immortal! Watch this...",
-                    11: "Now I'm a beetle! And I have 5 HP!",
-                    12: "Beetle form with 6 HP!",
-                    13: "Stronger beetle with 7 HP!",
-                    14: "Even stronger! 8 HP!",
-                    15: "Getting tougher! 9 HP!",
-                    16: "Almost at peak beetle! 10 HP!",
-                    17: "Maximum beetle power! 11 HP!",
-                    18: "Now I'm a moth! Try to catch me! 3 HP!",
-                    19: "I'm hopping away! Need 2 clicks!",
-                    20: "Still hopping! 2 clicks needed!",
-                    21: "Hop hop hop! Click me twice!",
-                    22: "Last hop! Two more clicks and... something happens!"
-                };
-                
-                this.init();
-            }
-            
-            init() {
-                this.updateDisplay();
-                this.jimImage.addEventListener('click', (e) => this.handleClick(e));
-                document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-            }
-            
-            handleClick(e) {
-                e.preventDefault();
-                this.currentClicks++;
-                
-                if (this.currentJim >= 11 && this.currentJim <= 18) {
-                    // HP system active
-                    this.hp = Math.max(0, this.hp - 1);
-                    this.updateHPBar();
-                    
-                    if (this.hp > 0) {
-                        return; // Don't advance until HP is 0
-                    }
-                }
-                
-                if (this.currentJim >= 19 && this.currentJim <= 22) {
-                    // Hopping Jims need 2 clicks
-                    if (this.currentClicks < 2) {
-                        this.moveAwayFromCursor(e);
-                        return;
-                    }
-                }
-                
-                // Advance to next Jim
-                this.currentClicks = 0;
-                this.currentJim++;
-                
-                if (this.currentJim > this.maxJim) {
-                    this.startParticleShow();
-                    return;
-                }
-                
-                this.updateDisplay();
-            }
-            
-            updateDisplay() {
-                this.jimImage.src = `jim${this.currentJim}.png`;
-                this.dialogueText.textContent = this.dialogues[this.currentJim] || "...";
-                
-                // Reset positioning and movement
-                this.stopMovement();
-                this.jimImage.style.position = 'static';
-                this.jimImage.classList.remove('flying-jim', 'hopping-jim');
-                
-                // HP system for beetles (11-17) and moth (18)
-                if (this.currentJim >= 11 && this.currentJim <= 18) {
-                    this.setupHPSystem();
-                } else {
-                    this.hpContainer.style.display = 'none';
-                }
-                
-                // Special behaviors
-                if (this.currentJim === 18) {
-                    this.startFlyingBehavior();
-                } else if (this.currentJim >= 19 && this.currentJim <= 22) {
-                    this.startHoppingBehavior();
-                }
-            }
-            
-            setupHPSystem() {
-                if (this.currentJim >= 11 && this.currentJim <= 17) {
-                    // Beetles: HP increases by 1 each time, starting at 5
-                    this.maxHp = 5 + (this.currentJim - 11);
-                } else if (this.currentJim === 18) {
-                    // Moth: 3 HP
-                    this.maxHp = 3;
-                }
-                
-                this.hp = this.maxHp;
-                this.hpContainer.style.display = 'block';
-                this.updateHPBar();
-            }
-            
-            updateHPBar() {
-                const percentage = (this.hp / this.maxHp) * 100;
-                this.hpFill.style.width = percentage + '%';
-                this.hpText.textContent = `${this.hp} / ${this.maxHp} HP`;
-            }
-            
-            startFlyingBehavior() {
-                this.jimImage.classList.add('flying-jim');
-                this.isMoving = true;
-                
-                this.moveInterval = setInterval(() => {
-                    const maxX = window.innerWidth - this.jimImage.offsetWidth;
-                    const maxY = window.innerHeight - this.jimImage.offsetHeight;
-                    
-                    const newX = Math.random() * maxX;
-                    const newY = Math.random() * maxY;
-                    
-                    this.jimImage.style.left = newX + 'px';
-                    this.jimImage.style.top = newY + 'px';
-                }, 2000);
-            }
-            
-            startHoppingBehavior() {
-                this.jimImage.classList.add('hopping-jim');
-                this.positionRandomly();
-            }
-            
-            positionRandomly() {
-                const maxX = window.innerWidth - this.jimImage.offsetWidth;
-                const maxY = window.innerHeight - this.jimImage.offsetHeight;
-                
-                const newX = Math.random() * maxX;
-                const newY = Math.random() * maxY;
-                
-                this.jimImage.style.left = newX + 'px';
-                this.jimImage.style.top = newY + 'px';
-            }
-            
-            moveAwayFromCursor(e) {
-                const rect = this.jimImage.getBoundingClientRect();
-                const jimCenterX = rect.left + rect.width / 2;
-                const jimCenterY = rect.top + rect.height / 2;
-                
-                const mouseX = e.clientX;
-                const mouseY = e.clientY;
-                
-                const deltaX = jimCenterX - mouseX;
-                const deltaY = jimCenterY - mouseY;
-                
-                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                const moveDistance = 100;
-                
-                let newX = rect.left + (deltaX / distance) * moveDistance;
-                let newY = rect.top + (deltaY / distance) * moveDistance;
-                
-                // Keep within bounds
-                newX = Math.max(0, Math.min(window.innerWidth - rect.width, newX));
-                newY = Math.max(0, Math.min(window.innerHeight - rect.height, newY));
-                
-                this.jimImage.style.left = newX + 'px';
-                this.jimImage.style.top = newY + 'px';
-            }
-            
-            handleMouseMove(e) {
-                if (this.currentJim >= 19 && this.currentJim <= 22) {
-                    // Hopping Jims run away from cursor
-                    const rect = this.jimImage.getBoundingClientRect();
-                    const distance = Math.sqrt(
-                        Math.pow(e.clientX - (rect.left + rect.width/2), 2) + 
-                        Math.pow(e.clientY - (rect.top + rect.height/2), 2)
-                    );
-                    
-                    if (distance < 100) {
-                        this.moveAwayFromCursor(e);
-                    }
-                }
-            }
-            
-            stopMovement() {
-                this.isMoving = false;
-                if (this.moveInterval) {
-                    clearInterval(this.moveInterval);
-                    this.moveInterval = null;
-                }
-            }
-            
-            startParticleShow() {
-                this.dialogueText.textContent = "PARTICLE EXPLOSION!";
-                this.jimImage.style.display = 'none';
-                this.hpContainer.style.display = 'none';
-                
-                // Create particle shower
-                const particleCount = 200;
-                const duration = 10000; // 10 seconds
-                
-                for (let i = 0; i < particleCount; i++) {
-                    setTimeout(() => {
-                        this.createParticle();
-                    }, Math.random() * duration);
-                }
-                
-                // Restart game after particle show
-                setTimeout(() => {
-                    this.resetGame();
-                }, duration);
-            }
-            
-            createParticle() {
-                const particle = document.createElement('img');
-                particle.classList.add('particle', 'rainbow-effect');
-                particle.src = Math.random() > 0.5 ? 'thumbs.png' : 'hand.png';
-                
-                // Random starting position at top of screen
-                particle.style.left = Math.random() * window.innerWidth + 'px';
-                particle.style.top = '-50px';
-                particle.style.width = (20 + Math.random() * 30) + 'px';
-                particle.style.height = 'auto';
-                particle.style.position = 'absolute';
-                particle.style.zIndex = '1000';
-                
-                this.particleContainer.appendChild(particle);
-                
-                // Animate particle falling
-                let yPos = -50;
-                let xVel = (Math.random() - 0.5) * 4;
-                let rotation = 0;
-                
-                const animateParticle = () => {
-                    yPos += 3 + Math.random() * 3;
-                    rotation += 5;
-                    
-                    particle.style.top = yPos + 'px';
-                    particle.style.left = (parseFloat(particle.style.left) + xVel) + 'px';
-                    particle.style.transform = `rotate(${rotation}deg)`;
-                    
-                    if (yPos < window.innerHeight + 100) {
-                        requestAnimationFrame(animateParticle);
-                    } else {
-                        particle.remove();
-                    }
-                };
-                
-                requestAnimationFrame(animateParticle);
-            }
-            
-            resetGame() {
-                // Clear particles
-                this.particleContainer.innerHTML = '';
-                
-                // Reset game state
-                this.currentJim = 1;
-                this.hp = 0;
-                this.maxHp = 0;
-                this.clicksRequired = 1;
-                this.currentClicks = 0;
-                this.stopMovement();
-                
-                // Reset display
-                this.jimImage.style.display = 'block';
-                this.jimImage.style.position = 'static';
-                this.jimImage.classList.remove('flying-jim', 'hopping-jim');
-                
-                this.updateDisplay();
-            }
+      class JimGame {
+        constructor() {
+          this.currentJim = 1;
+          this.maxJim = 22;
+          this.hp = 0;
+          this.maxHp = 0;
+          this.clicksRequired = 1;
+          this.currentClicks = 0;
+          this.isMoving = false;
+          this.moveInterval = null;
+          this.particles = [];
+          this.comboCount = 0;
+          this.lastClickTime = 0;
+          this.beetleClickCount = 0;
+
+          this.jimImage = document.getElementById("jim-image");
+          this.dialogueBox = document.getElementById("dialogue-box");
+          this.dialogueText = document.getElementById("dialogue-text");
+          this.hpContainer = document.getElementById("hp-bar-container");
+          this.hpFill = document.getElementById("hp-fill");
+          this.hpText = document.getElementById("hp-text");
+          this.particleContainer =
+            document.getElementById("particle-container");
+          this.gameContainer = document.getElementById("game-container");
+          this.progressFill = document.getElementById("progress-fill");
+          this.comboCounter = document.getElementById("combo-counter");
+          this.progressBar = document.querySelector(".progress-bar");
+
+          this.dialogues = {
+            1: "🐸 Hello there! I'm Jim! Please don't click me!",
+            2: "😱 Oh no! You're going to click me! I'm SO scared!",
+            3: "😵 Ow! That hurt!",
+            4: "😖 My arm! OMG please stop, it's starting to bleed.",
+            5: "💫 You vaporized my hand! I'm losing so much blood now!",
+            6: "😏 Haha! Just kidding! You can't actually hurt me!",
+            7: "✨ I'm INVINCIBLE! Your clicks are powerless against me!",
+            8: "💀 Bleh... I'm dead...",
+            9: "🗣️ Even as just a head, I CANNOT DIE! Mwahahaha!",
+            10: "👻 Seriously, I'm immortal! Watch me transform...",
+            11: "🪲 BEETLE MODE ACTIVATED! I have 5 HP now!",
+            12: "🪲 Stronger beetle form! 6 HP of pure bug power!",
+            13: "🪲 Even MORE beetle! 7 HP! I'm getting tougher!",
+            14: "🪲 MEGA beetle! 8 HP! Try to stop me now!",
+            15: "🪲 ULTRA beetle! 9 HP! I'm nearly unstoppable!",
+            16: "🪲 SUPREME beetle! 10 HP! Peak beetle performance!",
+            17: "🪲 LEGENDARY beetle! 11 HP! Maximum bug evolution!",
+            18: "🦋 Now I'm a MOTH! Catch me if you can! 3 HP!",
+            19: "🐔 Hop hop! I'm chicken-Jim! You need 2 clicks!",
+            20: "🐔 Still hopping! Can't catch me! 2 clicks needed!",
+            21: "🐔 Bawk bawk! I'm getting away! Click twice!",
+            22: "🐔 FINAL FORM! Two more clicks and... CHAOS ERUPTS!",
+          };
+
+          // Beetle battle taunts for cycling dialogue
+          this.beetleTaunts = {
+            11: [
+              "🪲 BEETLE MODE ACTIVATED! I have 5 HP now!",
+              "🪲 You can't hurt me! I'm a bug now!",
+              "🪲 My exoskeleton is impenetrable!",
+              "🪲 Buzz buzz! Try harder!",
+              "🪲 Is that the best you can do?",
+            ],
+            12: [
+              "🪲 Stronger beetle form! 6 HP of pure bug power!",
+              "🪲 I'm evolving with each hit!",
+              "🪲 My carapace grows stronger!",
+              "🪲 You're making me tougher!",
+              "🪲 Keep clicking, I love it!",
+            ],
+            13: [
+              "🪲 Even MORE beetle! 7 HP! I'm getting tougher!",
+              "🪲 My mandibles are getting sharper!",
+              "🪲 I'm becoming the ultimate bug!",
+              "🪲 Your clicks fuel my transformation!",
+              "🪲 I'm unstoppable now!",
+            ],
+            14: [
+              "🪲 MEGA beetle! 8 HP! Try to stop me now!",
+              "🪲 I'm reaching peak beetle form!",
+              "🪲 My wings are growing stronger!",
+              "🪲 You cannot comprehend my power!",
+              "🪲 I am become bug, destroyer of clicks!",
+            ],
+            15: [
+              "🪲 ULTRA beetle! 9 HP! I'm nearly unstoppable!",
+              "🪲 I transcend normal beetle limits!",
+              "🪲 My chitinous armor is legendary!",
+              "🪲 You're witnessing bug perfection!",
+              "🪲 I am the alpha and omega of beetles!",
+            ],
+            16: [
+              "🪲 SUPREME beetle! 10 HP! Peak beetle performance!",
+              "🪲 I am the pinnacle of bug evolution!",
+              "🪲 My beetle form knows no equal!",
+              "🪲 You face the ultimate arthropod!",
+              "🪲 I am the beetle final boss!",
+            ],
+            17: [
+              "🪲 LEGENDARY beetle! 11 HP! Maximum bug evolution!",
+              "🪲 I have achieved beetle enlightenment!",
+              "🪲 My form is beyond mortal comprehension!",
+              "🪲 I am the stuff of beetle legends!",
+              "🪲 Witness my ultimate beetle majesty!",
+            ],
+          };
+
+          this.clickPhrases = [
+            "POW!",
+            "BAM!",
+            "WHACK!",
+            "BONK!",
+            "SMASH!",
+            "HIT!",
+            "CRACK!",
+            "THWAP!",
+            "BOOM!",
+            "ZAP!",
+          ];
+
+          this.init();
         }
-        
-        // Start the game when page loads
-        window.addEventListener('load', () => {
-            new JimGame();
-        });
+
+        init() {
+          this.updateDisplay();
+          this.updateProgressBar();
+          this.jimImage.addEventListener("click", (e) => this.handleClick(e));
+          document.addEventListener("mousemove", (e) =>
+            this.handleMouseMove(e)
+          );
+
+          // Add some initial sparkle
+          this.createSparkle(this.jimImage.getBoundingClientRect());
+        }
+
+        handleClick(e) {
+          e.preventDefault();
+          const now = Date.now();
+
+          // Combo system
+          if (now - this.lastClickTime < 1000) {
+            this.comboCount++;
+          } else {
+            this.comboCount = 1;
+          }
+          this.lastClickTime = now;
+          this.updateComboCounter();
+
+          // Visual feedback
+          this.addClickEffect(e);
+          this.jimImage.classList.add("clicked");
+          setTimeout(() => this.jimImage.classList.remove("clicked"), 300);
+
+          // Screen shake for impact
+          if (this.currentJim >= 11) {
+            this.screenShake();
+          }
+
+          this.currentClicks++;
+
+          if (this.currentJim >= 11 && this.currentJim <= 18) {
+            // HP system active
+            this.hp = Math.max(0, this.hp - 1);
+            this.updateHPBar();
+
+            // Add damage animation
+            this.jimImage.classList.add("damaged");
+            setTimeout(() => this.jimImage.classList.remove("damaged"), 400);
+
+            // Cycle beetle dialogue during combat
+            if (this.currentJim >= 11 && this.currentJim <= 17) {
+              this.beetleClickCount++;
+              this.updateBeetleDialogue();
+            }
+
+            if (this.hp > 0) {
+              return; // Don't advance until HP is 0
+            }
+          }
+
+          if (this.currentJim >= 19 && this.currentJim <= 22) {
+            // Hopping Jims need 2 clicks
+            if (this.currentClicks < 2) {
+              this.moveAwayFromCursor(e);
+              return;
+            }
+          }
+
+          // Advance to next Jim
+          this.currentClicks = 0;
+          this.beetleClickCount = 0; // Reset beetle click counter
+          this.currentJim++;
+
+          if (this.currentJim > this.maxJim) {
+            this.startParticleShow();
+            return;
+          }
+
+          this.updateDisplay();
+          this.updateProgressBar();
+        }
+
+        updateDisplay() {
+          this.jimImage.src = `jim${this.currentJim}.png`;
+          this.dialogueText.textContent =
+            this.dialogues[this.currentJim] || "...";
+
+          // Add dialogue animation
+          this.dialogueBox.style.animation = "dialoguePulse 0.5s ease-out";
+
+          // Reset positioning and movement
+          this.stopMovement();
+          this.jimImage.style.position = "static";
+          this.jimImage.className = "jim-image"; // Reset classes
+
+          // Add personality-based animations
+          this.addPersonalityAnimation();
+
+          // HP system for beetles (11-17) and moth (18)
+          if (this.currentJim >= 11 && this.currentJim <= 18) {
+            this.setupHPSystem();
+            // Fade out progress bar when entering beetle mode
+            if (this.currentJim === 11) {
+              this.progressBar.classList.add("fade-out");
+            }
+          } else {
+            this.hpContainer.style.display = "none";
+          }
+
+          // Special behaviors
+          if (this.currentJim === 18) {
+            this.startFlyingBehavior();
+          } else if (this.currentJim >= 19 && this.currentJim <= 22) {
+            this.startHoppingBehavior();
+          }
+        }
+
+        updateBeetleDialogue() {
+          if (this.beetleTaunts[this.currentJim]) {
+            const taunts = this.beetleTaunts[this.currentJim];
+            const tauntIndex = (this.beetleClickCount - 1) % taunts.length;
+            this.dialogueText.textContent = taunts[tauntIndex];
+            this.dialogueBox.style.animation = "dialoguePulse 0.5s ease-out";
+          }
+        }
+
+        addPersonalityAnimation() {
+          if (this.currentJim === 1) {
+            this.jimImage.classList.add("happy-jim");
+          } else if (this.currentJim === 2) {
+            this.jimImage.classList.add("scared-jim");
+          } else if (this.currentJim >= 6 && this.currentJim <= 7) {
+            this.jimImage.classList.add("invincible-jim");
+          } else if (this.currentJim === 8) {
+            this.jimImage.classList.add("dead-jim");
+          } else if (this.currentJim >= 11 && this.currentJim <= 17) {
+            this.jimImage.classList.add("beetle-jim");
+          }
+        }
+
+        setupHPSystem() {
+          if (this.currentJim >= 11 && this.currentJim <= 17) {
+            // Beetles: HP increases by 1 each time, starting at 5
+            this.maxHp = 5 + (this.currentJim - 11);
+          } else if (this.currentJim === 18) {
+            // Moth: 3 HP
+            this.maxHp = 3;
+          }
+
+          this.hp = this.maxHp;
+          this.hpContainer.style.display = "block";
+          this.hpContainer.style.animation = "hpBarSlideIn 0.5s ease-out";
+          this.updateHPBar();
+        }
+
+        updateHPBar() {
+          const percentage = (this.hp / this.maxHp) * 100;
+          this.hpFill.style.width = percentage + "%";
+          this.hpText.textContent = `❤️ ${this.hp} / ${this.maxHp} HP`;
+
+          // Add critical health effects
+          if (percentage <= 25) {
+            this.hpFill.classList.add("critical");
+            if (this.currentJim >= 11 && this.currentJim <= 17) {
+              this.jimImage.classList.add("low-health");
+            }
+          } else {
+            this.hpFill.classList.remove("critical");
+            this.jimImage.classList.remove("low-health");
+          }
+        }
+
+        updateProgressBar() {
+          const percentage = (this.currentJim / this.maxJim) * 100;
+          this.progressFill.style.width = percentage + "%";
+        }
+
+        updateComboCounter() {
+          if (this.comboCount > 1) {
+            this.comboCounter.textContent = `${this.comboCount}x COMBO!`;
+            this.comboCounter.style.display = "block";
+            this.comboCounter.style.animation = "comboPulse 0.5s ease-out";
+
+            setTimeout(() => {
+              if (Date.now() - this.lastClickTime > 2000) {
+                this.comboCounter.style.display = "none";
+                this.comboCount = 0;
+              }
+            }, 2000);
+          }
+        }
+
+        addClickEffect(e) {
+          const effect = document.createElement("div");
+          effect.classList.add("click-effect");
+          effect.textContent =
+            this.clickPhrases[
+              Math.floor(Math.random() * this.clickPhrases.length)
+            ];
+
+          const rect = this.jimImage.getBoundingClientRect();
+          effect.style.left = rect.left + Math.random() * rect.width + "px";
+          effect.style.top = rect.top + Math.random() * rect.height + "px";
+          effect.style.color = `hsl(${Math.random() * 360}, 100%, 70%)`;
+
+          document.body.appendChild(effect);
+
+          setTimeout(() => effect.remove(), 1000);
+        }
+
+        screenShake() {
+          this.gameContainer.classList.add("screen-shake");
+          setTimeout(
+            () => this.gameContainer.classList.remove("screen-shake"),
+            500
+          );
+        }
+
+        createSparkle(rect) {
+          for (let i = 0; i < 5; i++) {
+            setTimeout(() => {
+              const sparkle = document.createElement("div");
+              sparkle.style.position = "absolute";
+              sparkle.style.left =
+                rect.left + Math.random() * rect.width + "px";
+              sparkle.style.top = rect.top + Math.random() * rect.height + "px";
+              sparkle.style.width = "4px";
+              sparkle.style.height = "4px";
+              sparkle.style.background = "#ffff00";
+              sparkle.style.borderRadius = "50%";
+              sparkle.style.pointerEvents = "none";
+              sparkle.style.animation = "clickEffectFloat 1s ease-out forwards";
+              sparkle.style.zIndex = "100";
+
+              document.body.appendChild(sparkle);
+              setTimeout(() => sparkle.remove(), 1000);
+            }, i * 100);
+          }
+        }
+
+        startFlyingBehavior() {
+          this.jimImage.classList.add("flying-jim");
+          this.isMoving = true;
+
+          this.moveInterval = setInterval(() => {
+            const maxX = window.innerWidth - this.jimImage.offsetWidth;
+            const maxY = window.innerHeight - this.jimImage.offsetHeight;
+
+            const newX = Math.random() * maxX;
+            const newY = Math.random() * maxY;
+
+            this.jimImage.style.left = newX + "px";
+            this.jimImage.style.top = newY + "px";
+
+            // Add flutter trail
+            this.createFlutterTrail(newX, newY);
+          }, 1500);
+        }
+
+        createFlutterTrail(x, y) {
+          for (let i = 0; i < 3; i++) {
+            setTimeout(() => {
+              const trail = document.createElement("div");
+              trail.style.position = "absolute";
+              trail.style.left = x + Math.random() * 50 + "px";
+              trail.style.top = y + Math.random() * 50 + "px";
+              trail.style.width = "6px";
+              trail.style.height = "6px";
+              trail.style.background = "rgba(255, 255, 255, 0.6)";
+              trail.style.borderRadius = "50%";
+              trail.style.pointerEvents = "none";
+              trail.style.animation = "clickEffectFloat 0.8s ease-out forwards";
+
+              document.body.appendChild(trail);
+              setTimeout(() => trail.remove(), 800);
+            }, i * 50);
+          }
+        }
+
+        startHoppingBehavior() {
+          this.jimImage.classList.add("hopping-jim");
+          this.positionRandomly();
+        }
+
+        positionRandomly() {
+          const maxX = window.innerWidth - this.jimImage.offsetWidth;
+          const maxY = window.innerHeight - this.jimImage.offsetHeight;
+
+          const newX = Math.random() * maxX;
+          const newY = Math.random() * maxY;
+
+          this.jimImage.style.left = newX + "px";
+          this.jimImage.style.top = newY + "px";
+        }
+
+        moveAwayFromCursor(e) {
+          const rect = this.jimImage.getBoundingClientRect();
+          const jimCenterX = rect.left + rect.width / 2;
+          const jimCenterY = rect.top + rect.height / 2;
+
+          const mouseX = e.clientX;
+          const mouseY = e.clientY;
+
+          const deltaX = jimCenterX - mouseX;
+          const deltaY = jimCenterY - mouseY;
+
+          const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+          const moveDistance = 150;
+
+          let newX = rect.left + (deltaX / distance) * moveDistance;
+          let newY = rect.top + (deltaY / distance) * moveDistance;
+
+          // Keep within bounds with edge preference for running Jims
+          const margin = 50; // Distance from edge
+          if (this.currentJim >= 19 && this.currentJim <= 22) {
+            // Prefer edges of screen for chicken Jims
+            if (newX < window.innerWidth * 0.3) {
+              newX = Math.max(margin, newX);
+            } else if (newX > window.innerWidth * 0.7) {
+              newX = Math.min(window.innerWidth - rect.width - margin, newX);
+            }
+
+            if (newY < window.innerHeight * 0.3) {
+              newY = Math.max(margin, newY);
+            } else if (newY > window.innerHeight * 0.7) {
+              newY = Math.min(window.innerHeight - rect.height - margin, newY);
+            }
+          } else {
+            // Normal bounds for other Jims
+            newX = Math.max(0, Math.min(window.innerWidth - rect.width, newX));
+            newY = Math.max(
+              0,
+              Math.min(window.innerHeight - rect.height, newY)
+            );
+          }
+
+          this.jimImage.style.left = newX + "px";
+          this.jimImage.style.top = newY + "px";
+
+          // Add escape dust
+          this.createEscapeDust(rect.left, rect.top);
+        }
+
+        createEscapeDust(x, y) {
+          for (let i = 0; i < 5; i++) {
+            const dust = document.createElement("div");
+            dust.style.position = "absolute";
+            dust.style.left = x + Math.random() * 100 + "px";
+            dust.style.top = y + Math.random() * 100 + "px";
+            dust.style.width = "8px";
+            dust.style.height = "8px";
+            dust.style.background = "rgba(255, 255, 255, 0.4)";
+            dust.style.borderRadius = "50%";
+            dust.style.pointerEvents = "none";
+            dust.style.animation = "clickEffectFloat 1.2s ease-out forwards";
+
+            document.body.appendChild(dust);
+            setTimeout(() => dust.remove(), 1200);
+          }
+        }
+
+        handleMouseMove(e) {
+          if (this.currentJim >= 19 && this.currentJim <= 22) {
+            // Hopping Jims run away from cursor
+            const rect = this.jimImage.getBoundingClientRect();
+            const distance = Math.sqrt(
+              Math.pow(e.clientX - (rect.left + rect.width / 2), 2) +
+                Math.pow(e.clientY - (rect.top + rect.height / 2), 2)
+            );
+
+            if (distance < 120) {
+              this.moveAwayFromCursor(e);
+            }
+          }
+        }
+
+        stopMovement() {
+          this.isMoving = false;
+          if (this.moveInterval) {
+            clearInterval(this.moveInterval);
+            this.moveInterval = null;
+          }
+        }
+
+        startParticleShow() {
+          this.dialogueText.textContent = "🎉 ULTIMATE PARTICLE EXPLOSION! 🎉";
+          this.jimImage.style.display = "none";
+          this.hpContainer.style.display = "none";
+          this.comboCounter.style.display = "none";
+
+          // Massive screen shake
+          this.gameContainer.classList.add("screen-shake");
+
+          // Create massive particle shower
+          const particleCount = 500;
+          const duration = 10000; // 10 seconds
+
+          for (let i = 0; i < particleCount; i++) {
+            setTimeout(() => {
+              this.createParticle();
+            }, Math.random() * duration);
+          }
+
+          // Add firework bursts
+          for (let i = 0; i < 20; i++) {
+            setTimeout(() => {
+              this.createFireworkBurst();
+            }, Math.random() * duration);
+          }
+
+          // Restart game after particle show
+          setTimeout(() => {
+            this.resetGame();
+          }, duration);
+        }
+
+        createParticle() {
+          const particle = document.createElement("img");
+          particle.classList.add("particle", "rainbow-effect");
+          particle.src = Math.random() > 0.5 ? "thumbs.png" : "hand.png";
+
+          // Random starting position at top of screen
+          particle.style.left = Math.random() * window.innerWidth + "px";
+          particle.style.top = "-50px";
+          particle.style.width = 30 + Math.random() * 50 + "px";
+          particle.style.height = "auto";
+          particle.style.position = "absolute";
+          particle.style.zIndex = "1000";
+
+          this.particleContainer.appendChild(particle);
+
+          // Animate particle falling with physics
+          let yPos = -50;
+          let xVel = (Math.random() - 0.5) * 8;
+          let yVel = 2 + Math.random() * 4;
+          let rotation = Math.random() * 360;
+          let rotVel = (Math.random() - 0.5) * 20;
+
+          const animateParticle = () => {
+            yPos += yVel;
+            yVel += 0.2; // gravity
+            rotation += rotVel;
+
+            particle.style.top = yPos + "px";
+            particle.style.left = parseFloat(particle.style.left) + xVel + "px";
+            particle.style.transform = `rotate(${rotation}deg) scale(${
+              1 + Math.sin(yPos * 0.01) * 0.2
+            })`;
+
+            if (yPos < window.innerHeight + 100) {
+              requestAnimationFrame(animateParticle);
+            } else {
+              particle.remove();
+            }
+          };
+
+          requestAnimationFrame(animateParticle);
+        }
+
+        createFireworkBurst() {
+          const centerX = Math.random() * window.innerWidth;
+          const centerY = Math.random() * (window.innerHeight * 0.6);
+
+          for (let i = 0; i < 12; i++) {
+            const angle = (i / 12) * Math.PI * 2;
+            const burst = document.createElement("div");
+            burst.style.position = "absolute";
+            burst.style.left = centerX + "px";
+            burst.style.top = centerY + "px";
+            burst.style.width = "4px";
+            burst.style.height = "4px";
+            burst.style.background = `hsl(${Math.random() * 360}, 100%, 70%)`;
+            burst.style.borderRadius = "50%";
+            burst.style.pointerEvents = "none";
+
+            document.body.appendChild(burst);
+
+            let distance = 0;
+            const animateBurst = () => {
+              distance += 5;
+              const x = centerX + Math.cos(angle) * distance;
+              const y = centerY + Math.sin(angle) * distance;
+
+              burst.style.left = x + "px";
+              burst.style.top = y + "px";
+              burst.style.opacity = Math.max(0, 1 - distance / 200);
+
+              if (distance < 200) {
+                requestAnimationFrame(animateBurst);
+              } else {
+                burst.remove();
+              }
+            };
+
+            requestAnimationFrame(animateBurst);
+          }
+        }
+
+        resetGame() {
+          // Clear particles
+          this.particleContainer.innerHTML = "";
+
+          // Reset game state
+          this.currentJim = 1;
+          this.hp = 0;
+          this.maxHp = 0;
+          this.clicksRequired = 1;
+          this.currentClicks = 0;
+          this.comboCount = 0;
+          this.beetleClickCount = 0;
+          this.stopMovement();
+
+          // Reset display
+          this.jimImage.style.display = "block";
+          this.jimImage.style.position = "static";
+          this.jimImage.className = "jim-image happy-jim";
+          this.gameContainer.classList.remove("screen-shake");
+          this.comboCounter.style.display = "none";
+          this.progressBar.classList.remove("fade-out"); // Show progress bar again
+
+          this.updateDisplay();
+          this.updateProgressBar();
+
+          // Welcome back sparkle
+          setTimeout(() => {
+            this.createSparkle(this.jimImage.getBoundingClientRect());
+          }, 500);
+        }
+      }
+
+      // Start the game when page loads
+      window.addEventListener("load", () => {
+        new JimGame();
+      });
     </script>
-</body>
+  </body>
 </html>
