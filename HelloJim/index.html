@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jim Clicking Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Courier New", monospace;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .jim-container {
+            position: relative;
+            text-align: center;
+        }
+
+        .jim-image {
+            max-width: 300px;
+            height: auto;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            user-select: none;
+        }
+
+        .jim-image:hover {
+            transform: scale(1.05);
+            filter: brightness(1.2);
+        }
+
+        .dialogue-box {
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #fff;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px;
+            max-width: 500px;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .dialogue-text {
+            font-size: 1.2em;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        .hp-bar-container {
+            margin: 20px 0;
+            display: none;
+        }
+
+        .hp-bar {
+            width: 200px;
+            height: 20px;
+            background: #333;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0 auto;
+        }
+
+        .hp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff0000, #ff6600);
+            transition: width 0.3s ease;
+        }
+
+        .hp-text {
+            text-align: center;
+            margin-top: 5px;
+            font-weight: bold;
+        }
+
+        .flying-jim {
+            position: absolute !important;
+            transition: none !important;
+        }
+
+        .hopping-jim {
+            position: absolute !important;
+            animation: hop 1s infinite;
+        }
+
+        @keyframes hop {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-20px); }
+        }
+
+        .particle {
+            position: absolute;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        .particle-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        @keyframes rainbow {
+            0% { filter: hue-rotate(0deg); }
+            100% { filter: hue-rotate(360deg); }
+        }
+
+        .rainbow-effect {
+            animation: rainbow 2s infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="jim-container">
+            <img id="jim-image" class="jim-image" src="jim1.png" alt="Jim">
+            <div id="dialogue-box" class="dialogue-box">
+                <div id="dialogue-text" class="dialogue-text">Click me!</div>
+            </div>
+            <div id="hp-bar-container" class="hp-bar-container">
+                <div class="hp-bar">
+                    <div id="hp-fill" class="hp-fill"></div>
+                </div>
+                <div id="hp-text" class="hp-text"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="particle-container" class="particle-container"></div>
+
+    <script>
+        class JimGame {
+            constructor() {
+                this.currentJim = 1;
+                this.maxJim = 22;
+                this.hp = 0;
+                this.maxHp = 0;
+                this.clicksRequired = 1;
+                this.currentClicks = 0;
+                this.isMoving = false;
+                this.moveInterval = null;
+                this.particles = [];
+                
+                this.jimImage = document.getElementById('jim-image');
+                this.dialogueBox = document.getElementById('dialogue-box');
+                this.dialogueText = document.getElementById('dialogue-text');
+                this.hpContainer = document.getElementById('hp-bar-container');
+                this.hpFill = document.getElementById('hp-fill');
+                this.hpText = document.getElementById('hp-text');
+                this.particleContainer = document.getElementById('particle-container');
+                
+                this.dialogues = {
+                    1: "Hello there! I'm Jim! Click me to see what happens!",
+                    2: "Oh no! You're going to click me! I'm so scared! (wink wink)",
+                    3: "Ow! That hurt! (not really)",
+                    4: "Ouch! You're so mean! (this is fun though)",
+                    5: "Agh! I'm getting weaker! (totally fake)",
+                    6: "Haha! Just kidding! You can't actually hurt me!",
+                    7: "I'm invincible! Your clicks are powerless!",
+                    8: "Bleh... I'm dead... (just pretending)",
+                    9: "Even as just a head, I cannot die!",
+                    10: "Seriously, I'm immortal! Watch this...",
+                    11: "Now I'm a beetle! And I have 5 HP!",
+                    12: "Beetle form with 6 HP!",
+                    13: "Stronger beetle with 7 HP!",
+                    14: "Even stronger! 8 HP!",
+                    15: "Getting tougher! 9 HP!",
+                    16: "Almost at peak beetle! 10 HP!",
+                    17: "Maximum beetle power! 11 HP!",
+                    18: "Now I'm a moth! Try to catch me! 3 HP!",
+                    19: "I'm hopping away! Need 2 clicks!",
+                    20: "Still hopping! 2 clicks needed!",
+                    21: "Hop hop hop! Click me twice!",
+                    22: "Last hop! Two more clicks and... something happens!"
+                };
+                
+                this.init();
+            }
+            
+            init() {
+                this.updateDisplay();
+                this.jimImage.addEventListener('click', (e) => this.handleClick(e));
+                document.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+            }
+            
+            handleClick(e) {
+                e.preventDefault();
+                this.currentClicks++;
+                
+                if (this.currentJim >= 11 && this.currentJim <= 18) {
+                    // HP system active
+                    this.hp = Math.max(0, this.hp - 1);
+                    this.updateHPBar();
+                    
+                    if (this.hp > 0) {
+                        return; // Don't advance until HP is 0
+                    }
+                }
+                
+                if (this.currentJim >= 19 && this.currentJim <= 22) {
+                    // Hopping Jims need 2 clicks
+                    if (this.currentClicks < 2) {
+                        this.moveAwayFromCursor(e);
+                        return;
+                    }
+                }
+                
+                // Advance to next Jim
+                this.currentClicks = 0;
+                this.currentJim++;
+                
+                if (this.currentJim > this.maxJim) {
+                    this.startParticleShow();
+                    return;
+                }
+                
+                this.updateDisplay();
+            }
+            
+            updateDisplay() {
+                this.jimImage.src = `jim${this.currentJim}.png`;
+                this.dialogueText.textContent = this.dialogues[this.currentJim] || "...";
+                
+                // Reset positioning and movement
+                this.stopMovement();
+                this.jimImage.style.position = 'static';
+                this.jimImage.classList.remove('flying-jim', 'hopping-jim');
+                
+                // HP system for beetles (11-17) and moth (18)
+                if (this.currentJim >= 11 && this.currentJim <= 18) {
+                    this.setupHPSystem();
+                } else {
+                    this.hpContainer.style.display = 'none';
+                }
+                
+                // Special behaviors
+                if (this.currentJim === 18) {
+                    this.startFlyingBehavior();
+                } else if (this.currentJim >= 19 && this.currentJim <= 22) {
+                    this.startHoppingBehavior();
+                }
+            }
+            
+            setupHPSystem() {
+                if (this.currentJim >= 11 && this.currentJim <= 17) {
+                    // Beetles: HP increases by 1 each time, starting at 5
+                    this.maxHp = 5 + (this.currentJim - 11);
+                } else if (this.currentJim === 18) {
+                    // Moth: 3 HP
+                    this.maxHp = 3;
+                }
+                
+                this.hp = this.maxHp;
+                this.hpContainer.style.display = 'block';
+                this.updateHPBar();
+            }
+            
+            updateHPBar() {
+                const percentage = (this.hp / this.maxHp) * 100;
+                this.hpFill.style.width = percentage + '%';
+                this.hpText.textContent = `${this.hp} / ${this.maxHp} HP`;
+            }
+            
+            startFlyingBehavior() {
+                this.jimImage.classList.add('flying-jim');
+                this.isMoving = true;
+                
+                this.moveInterval = setInterval(() => {
+                    const maxX = window.innerWidth - this.jimImage.offsetWidth;
+                    const maxY = window.innerHeight - this.jimImage.offsetHeight;
+                    
+                    const newX = Math.random() * maxX;
+                    const newY = Math.random() * maxY;
+                    
+                    this.jimImage.style.left = newX + 'px';
+                    this.jimImage.style.top = newY + 'px';
+                }, 2000);
+            }
+            
+            startHoppingBehavior() {
+                this.jimImage.classList.add('hopping-jim');
+                this.positionRandomly();
+            }
+            
+            positionRandomly() {
+                const maxX = window.innerWidth - this.jimImage.offsetWidth;
+                const maxY = window.innerHeight - this.jimImage.offsetHeight;
+                
+                const newX = Math.random() * maxX;
+                const newY = Math.random() * maxY;
+                
+                this.jimImage.style.left = newX + 'px';
+                this.jimImage.style.top = newY + 'px';
+            }
+            
+            moveAwayFromCursor(e) {
+                const rect = this.jimImage.getBoundingClientRect();
+                const jimCenterX = rect.left + rect.width / 2;
+                const jimCenterY = rect.top + rect.height / 2;
+                
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+                
+                const deltaX = jimCenterX - mouseX;
+                const deltaY = jimCenterY - mouseY;
+                
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                const moveDistance = 100;
+                
+                let newX = rect.left + (deltaX / distance) * moveDistance;
+                let newY = rect.top + (deltaY / distance) * moveDistance;
+                
+                // Keep within bounds
+                newX = Math.max(0, Math.min(window.innerWidth - rect.width, newX));
+                newY = Math.max(0, Math.min(window.innerHeight - rect.height, newY));
+                
+                this.jimImage.style.left = newX + 'px';
+                this.jimImage.style.top = newY + 'px';
+            }
+            
+            handleMouseMove(e) {
+                if (this.currentJim >= 19 && this.currentJim <= 22) {
+                    // Hopping Jims run away from cursor
+                    const rect = this.jimImage.getBoundingClientRect();
+                    const distance = Math.sqrt(
+                        Math.pow(e.clientX - (rect.left + rect.width/2), 2) + 
+                        Math.pow(e.clientY - (rect.top + rect.height/2), 2)
+                    );
+                    
+                    if (distance < 100) {
+                        this.moveAwayFromCursor(e);
+                    }
+                }
+            }
+            
+            stopMovement() {
+                this.isMoving = false;
+                if (this.moveInterval) {
+                    clearInterval(this.moveInterval);
+                    this.moveInterval = null;
+                }
+            }
+            
+            startParticleShow() {
+                this.dialogueText.textContent = "PARTICLE EXPLOSION!";
+                this.jimImage.style.display = 'none';
+                this.hpContainer.style.display = 'none';
+                
+                // Create particle shower
+                const particleCount = 200;
+                const duration = 10000; // 10 seconds
+                
+                for (let i = 0; i < particleCount; i++) {
+                    setTimeout(() => {
+                        this.createParticle();
+                    }, Math.random() * duration);
+                }
+                
+                // Restart game after particle show
+                setTimeout(() => {
+                    this.resetGame();
+                }, duration);
+            }
+            
+            createParticle() {
+                const particle = document.createElement('img');
+                particle.classList.add('particle', 'rainbow-effect');
+                particle.src = Math.random() > 0.5 ? 'thumbs.png' : 'hand.png';
+                
+                // Random starting position at top of screen
+                particle.style.left = Math.random() * window.innerWidth + 'px';
+                particle.style.top = '-50px';
+                particle.style.width = (20 + Math.random() * 30) + 'px';
+                particle.style.height = 'auto';
+                particle.style.position = 'absolute';
+                particle.style.zIndex = '1000';
+                
+                this.particleContainer.appendChild(particle);
+                
+                // Animate particle falling
+                let yPos = -50;
+                let xVel = (Math.random() - 0.5) * 4;
+                let rotation = 0;
+                
+                const animateParticle = () => {
+                    yPos += 3 + Math.random() * 3;
+                    rotation += 5;
+                    
+                    particle.style.top = yPos + 'px';
+                    particle.style.left = (parseFloat(particle.style.left) + xVel) + 'px';
+                    particle.style.transform = `rotate(${rotation}deg)`;
+                    
+                    if (yPos < window.innerHeight + 100) {
+                        requestAnimationFrame(animateParticle);
+                    } else {
+                        particle.remove();
+                    }
+                };
+                
+                requestAnimationFrame(animateParticle);
+            }
+            
+            resetGame() {
+                // Clear particles
+                this.particleContainer.innerHTML = '';
+                
+                // Reset game state
+                this.currentJim = 1;
+                this.hp = 0;
+                this.maxHp = 0;
+                this.clicksRequired = 1;
+                this.currentClicks = 0;
+                this.stopMovement();
+                
+                // Reset display
+                this.jimImage.style.display = 'block';
+                this.jimImage.style.position = 'static';
+                this.jimImage.classList.remove('flying-jim', 'hopping-jim');
+                
+                this.updateDisplay();
+            }
+        }
+        
+        // Start the game when page loads
+        window.addEventListener('load', () => {
+            new JimGame();
+        });
+    </script>
+</body>
+</html>
