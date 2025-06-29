@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bug Catcher Jim - Adventure Game</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="game-container">
+      <!-- Game content will be dynamically loaded here -->
+    </div>
+
+    <!-- Minimized Game UI Overlay -->
+    <div id="game-ui" style="display: none">
+      <div class="game-hud">
+        <!-- Essential game info only -->
+        <div class="hud-top">
+          <div class="hud-item">
+            <span class="hud-label">Day:</span>
+            <span class="hud-value" id="day-counter">1</span>
+          </div>
+          <div class="hud-item">
+            <span class="hud-label">Score:</span>
+            <span class="hud-value" id="score-display">0</span>
+          </div>
+          <div class="hud-item coordinates">
+            <span class="hud-label">Position:</span>
+            <span class="hud-value" id="coordinates-display">(0, 0)</span>
+          </div>
+        </div>
+
+        <!-- Phase timer - prominent -->
+        <div class="phase-timer-container">
+          <div class="timer" id="phase-timer">Daylight: 60s</div>
+          <div class="timer-bar">
+            <div id="timer-bar-fill" class="timer-bar-fill"></div>
+          </div>
+        </div>
+
+        <!-- Current task -->
+        <div class="current-task">
+          <div class="task-carrying">
+            <span class="task-label">Carrying:</span>
+            <span class="task-value" id="carrying-display">None</span>
+          </div>
+          <div class="task-order">
+            <span class="task-label">Need:</span>
+            <span class="task-value" id="current-order-display">-</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Canvas will be created dynamically by JavaScript -->
+
+    <!-- Audio elements (placeholder - will be loaded by wrapper) -->
+    <audio id="background-music-day" loop preload="auto">
+      <source src="audio/background-music-day.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="background-music-night" loop preload="auto">
+      <source src="audio/background-music-night.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="background-music-death" loop preload="auto">
+      <source src="audio/background-music-death.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="collect-sound" preload="auto">
+      <source src="audio/collect-sound.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="ui-hover" preload="auto">
+      <source src="audio/ui-hover.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="order-complete" preload="auto">
+      <source src="audio/order-complete.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="timer-tick" preload="auto">
+      <source src="audio/timer-tick.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="monster-spawn" preload="auto">
+      <source src="audio/monster-spawn.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="death-sound" preload="auto">
+      <source src="audio/death-sound.mp3" type="audio/mpeg" />
+    </audio>
+    <audio id="day-transition" preload="auto">
+      <source src="audio/day-transition.mp3" type="audio/mpeg" />
+    </audio>
+
+    <!-- Scripts -->
+    <script src="config.js"></script>
+    <script src="messages.js"></script>
+    <script src="achievements.js"></script>
+    <script src="achievement-drawer.js"></script>
+    <script src="end-screen.js"></script>
+    <script src="start-screen.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
