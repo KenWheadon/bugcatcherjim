@@ -724,6 +724,18 @@
           this.createSparkle(this.jimImage.getBoundingClientRect());
         }
 
+        // Helper function to keep positions within screen bounds
+        keepWithinBounds(x, y, elementWidth, elementHeight) {
+          const margin = 20; // Minimum distance from screen edges
+          const maxX = window.innerWidth - elementWidth - margin;
+          const maxY = window.innerHeight - elementHeight - margin;
+
+          const boundedX = Math.max(margin, Math.min(maxX, x));
+          const boundedY = Math.max(margin, Math.min(maxY, y));
+
+          return { x: boundedX, y: boundedY };
+        }
+
         handleClick(e) {
           e.preventDefault();
           const now = Date.now();
@@ -852,10 +864,10 @@
         setupHPSystem() {
           if (this.currentJim >= 11 && this.currentJim <= 17) {
             // Beetles: HP increases by 1 each time, starting at 5
-            this.maxHp = 5 + (this.currentJim - 11);
+            this.maxHp = 3 + (this.currentJim - 11);
           } else if (this.currentJim === 18) {
             // Moth: 3 HP
-            this.maxHp = 3;
+            this.maxHp = 6;
           }
 
           this.hp = this.maxHp;
@@ -951,20 +963,32 @@
 
         startFlyingBehavior() {
           this.jimImage.classList.add("flying-jim");
+          this.jimImage.style.position = "absolute";
           this.isMoving = true;
 
+          // Get the Jim image dimensions for boundary calculations
+          const jimRect = this.jimImage.getBoundingClientRect();
+          const jimWidth = jimRect.width;
+          const jimHeight = jimRect.height;
+
           this.moveInterval = setInterval(() => {
-            const maxX = window.innerWidth - this.jimImage.offsetWidth;
-            const maxY = window.innerHeight - this.jimImage.offsetHeight;
+            // Generate random position within screen bounds
+            const randomX = Math.random() * (window.innerWidth - jimWidth);
+            const randomY = Math.random() * (window.innerHeight - jimHeight);
 
-            const newX = Math.random() * maxX;
-            const newY = Math.random() * maxY;
+            // Ensure position is within bounds
+            const boundedPos = this.keepWithinBounds(
+              randomX,
+              randomY,
+              jimWidth,
+              jimHeight
+            );
 
-            this.jimImage.style.left = newX + "px";
-            this.jimImage.style.top = newY + "px";
+            this.jimImage.style.left = boundedPos.x + "px";
+            this.jimImage.style.top = boundedPos.y + "px";
 
             // Add flutter trail
-            this.createFlutterTrail(newX, newY);
+            this.createFlutterTrail(boundedPos.x, boundedPos.y);
           }, 1500);
         }
 
@@ -990,65 +1014,85 @@
 
         startHoppingBehavior() {
           this.jimImage.classList.add("hopping-jim");
-          this.positionRandomly();
+          this.jimImage.style.position = "absolute";
+
+          // Initialize chicken running behavior
+          this.chickenDirection = Math.random() < 0.5 ? 1 : -1; // 1 for clockwise, -1 for counter-clockwise
+          this.chickenPosition = 0; // Position along the perimeter (0-1)
+          this.chickenSpeed = 0.002; // Speed of movement along perimeter
+
+          this.positionChickenOnEdge();
+          this.startChickenRunning();
         }
 
-        positionRandomly() {
-          const maxX = window.innerWidth - this.jimImage.offsetWidth;
-          const maxY = window.innerHeight - this.jimImage.offsetHeight;
+        positionChickenOnEdge() {
+          const margin = 20;
+          const jimWidth = 300; // Use the max-width from CSS instead of getBoundingClientRect
+          const jimHeight = jimWidth * 0.75; // Approximate aspect ratio for Jim images
 
-          const newX = Math.random() * maxX;
-          const newY = Math.random() * maxY;
+          // Calculate screen dimensions minus margins and Jim's size
+          const screenWidth = window.innerWidth - margin * 2 - jimWidth;
+          const screenHeight = window.innerHeight - margin * 2 - jimHeight;
+          const perimeter = (screenWidth + screenHeight) * 2;
+          const bumppx = window.innerWidth * 0.3;
+          const bumppy = window.innerHeight * 0.3;
 
-          this.jimImage.style.left = newX + "px";
-          this.jimImage.style.top = newY + "px";
+          // Convert position (0-1) to actual coordinates on screen edge
+          const distanceAlongPerimeter = this.chickenPosition * perimeter;
+          let x, y;
+
+          if (distanceAlongPerimeter <= screenWidth) {
+            // Top edge - moving left to right
+            x = margin + distanceAlongPerimeter;
+            y = margin;
+          } else if (distanceAlongPerimeter <= screenWidth + screenHeight) {
+            // Right edge - moving top to bottom
+            x = margin + screenWidth;
+            y = margin + (distanceAlongPerimeter - screenWidth);
+          } else if (distanceAlongPerimeter <= screenWidth * 2 + screenHeight) {
+            // Bottom edge - moving right to left
+            x =
+              margin +
+              screenWidth -
+              (distanceAlongPerimeter - screenWidth - screenHeight);
+            y = margin + screenHeight;
+          } else {
+            // Left edge - moving bottom to top
+            x = margin;
+            y =
+              margin +
+              screenHeight -
+              (distanceAlongPerimeter - screenWidth * 2 - screenHeight);
+          }
+
+          this.jimImage.style.left = x - bumppx + "px";
+          this.jimImage.style.top = y - bumppy + "px";
+        }
+
+        startChickenRunning() {
+          this.isMoving = true;
+
+          this.moveInterval = setInterval(() => {
+            // Move along the perimeter
+            this.chickenPosition += this.chickenSpeed * this.chickenDirection;
+
+            // Wrap around when reaching the end
+            if (this.chickenPosition < 0) {
+              this.chickenPosition = 1;
+            } else if (this.chickenPosition > 1) {
+              this.chickenPosition = 0;
+            }
+
+            this.positionChickenOnEdge();
+          }, 16); // ~60fps
         }
 
         moveAwayFromCursor(e) {
+          // For chicken Jims, reverse direction instead of moving away from cursor
+          this.chickenDirection *= -1;
+
+          // Add escape dust at current position
           const rect = this.jimImage.getBoundingClientRect();
-          const jimCenterX = rect.left + rect.width / 2;
-          const jimCenterY = rect.top + rect.height / 2;
-
-          const mouseX = e.clientX;
-          const mouseY = e.clientY;
-
-          const deltaX = jimCenterX - mouseX;
-          const deltaY = jimCenterY - mouseY;
-
-          const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-          const moveDistance = 150;
-
-          let newX = rect.left + (deltaX / distance) * moveDistance;
-          let newY = rect.top + (deltaY / distance) * moveDistance;
-
-          // Keep within bounds with edge preference for running Jims
-          const margin = 50; // Distance from edge
-          if (this.currentJim >= 19 && this.currentJim <= 22) {
-            // Prefer edges of screen for chicken Jims
-            if (newX < window.innerWidth * 0.3) {
-              newX = Math.max(margin, newX);
-            } else if (newX > window.innerWidth * 0.7) {
-              newX = Math.min(window.innerWidth - rect.width - margin, newX);
-            }
-
-            if (newY < window.innerHeight * 0.3) {
-              newY = Math.max(margin, newY);
-            } else if (newY > window.innerHeight * 0.7) {
-              newY = Math.min(window.innerHeight - rect.height - margin, newY);
-            }
-          } else {
-            // Normal bounds for other Jims
-            newX = Math.max(0, Math.min(window.innerWidth - rect.width, newX));
-            newY = Math.max(
-              0,
-              Math.min(window.innerHeight - rect.height, newY)
-            );
-          }
-
-          this.jimImage.style.left = newX + "px";
-          this.jimImage.style.top = newY + "px";
-
-          // Add escape dust
           this.createEscapeDust(rect.left, rect.top);
         }
 
@@ -1071,18 +1115,8 @@
         }
 
         handleMouseMove(e) {
-          if (this.currentJim >= 19 && this.currentJim <= 22) {
-            // Hopping Jims run away from cursor
-            const rect = this.jimImage.getBoundingClientRect();
-            const distance = Math.sqrt(
-              Math.pow(e.clientX - (rect.left + rect.width / 2), 2) +
-                Math.pow(e.clientY - (rect.top + rect.height / 2), 2)
-            );
-
-            if (distance < 120) {
-              this.moveAwayFromCursor(e);
-            }
-          }
+          // Removed cursor avoidance for chicken Jims - they now run along edges
+          // and only change direction when clicked
         }
 
         stopMovement() {
@@ -1219,6 +1253,9 @@
           this.currentClicks = 0;
           this.comboCount = 0;
           this.beetleClickCount = 0;
+          this.chickenDirection = 0;
+          this.chickenPosition = 0;
+          this.chickenSpeed = 0;
           this.stopMovement();
 
           // Reset display
