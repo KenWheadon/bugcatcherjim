@@ -1,7 +1,8 @@
 // Game configuration constants
 const GAME_CONFIG = {
   MAX_JIM: 32,
-  MAX_JIM_IMAGES: 22, // Only jim1.png through jim22.png exist
+  MAX_JIM_IMAGES: 22, // Standard jim images (jim1-22)
+  FUSION_IMAGES: [25, 26, 27], // Special fusion images that exist
 
   // HP configuration for different phases
   HP_CONFIG: {

@@ -532,10 +532,10 @@ body::before {
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: 300px;
-  height: 8px;
+  width: 80%;
+  height: 10%;
   background: rgba(0, 0, 0, 0.5);
-  border-radius: 4px;
+  border-radius: 50px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.3);
   transition: opacity 1s ease-out;
@@ -587,5 +587,4 @@ img {
   -khtml-user-drag: none;
   -moz-user-drag: none;
   -o-user-drag: none;
-  user-drag: none;
 }
