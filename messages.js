@@ -24,7 +24,7 @@ const MESSAGES = {
 
   // UI text
   UI: {
-    GAME_TITLE: "🐛 Bug Catcher Jim 🐛",
+    GAME_TITLE: "Bug Catcher Jim",
     RESEARCH_STATION: "Research Station Alpha",
     TIMER_LABEL: "Daylight:",
     NIGHT_TIMER_LABEL: "Survive the Night!",
@@ -114,7 +114,7 @@ const OrderGenerator = {
     return true;
   },
 
-  // Get order display text with image support
+  // Get order display text with bug images
   getOrderDisplayText: (order) => {
     if (!order) return "No active order";
 
@@ -125,7 +125,10 @@ const OrderGenerator = {
     const neededHTML = order.bugs
       .map((bugIndex) => {
         const bugType = CONFIG.BUG_TYPES[bugIndex];
-        return `<span class="bug-item">${bugType.name}</span>`;
+        return `<span class="bug-item">
+          <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 100%; vertical-align: middle; margin-right: 5px;">
+          ${bugType.name}
+        </span>`;
       })
       .join(", ");
 
@@ -141,20 +144,39 @@ const OrderGenerator = {
         ? order.collected
             .map((bugIndex) => {
               const bugType = CONFIG.BUG_TYPES[bugIndex];
-              return `<span class="bug-item">${bugType.name}</span>`;
+              return `<span class="bug-item">
+                <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 3px;">
+                ${bugType.name}
+              </span>`;
             })
             .join(", ")
         : "";
+
+    const remainingBugs = order.bugs.filter(
+      (bugType) => !order.collected.includes(bugType)
+    );
+    const remainingHTML =
+      remainingBugs.length > 0
+        ? remainingBugs
+            .map((bugIndex) => {
+              const bugType = CONFIG.BUG_TYPES[bugIndex];
+              return `<span class="bug-item">
+              <img src="images/${bugType.image}" alt="${bugType.name}" class="bug-order-image" style="width: 20px; height: 20px; vertical-align: middle; margin-right: 3px;">
+              ${bugType.name}
+            </span>`;
+            })
+            .join(", ")
+        : "Order Complete!";
 
     return {
       needed: neededText,
       neededHTML: neededHTML,
       collected: collectedText,
       collectedHTML: collectedHTML,
-      remaining: order.bugs
-        .filter((bugType) => !order.collected.includes(bugType))
+      remaining: remainingBugs
         .map((bugIndex) => `${CONFIG.BUG_TYPES[bugIndex].name}`)
         .join(", "),
+      remainingHTML: remainingHTML,
     };
   },
 };

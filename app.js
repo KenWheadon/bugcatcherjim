@@ -31,6 +31,7 @@ const Game = {
     // World entities
     bugs: [],
     monsters: [],
+    particles: [], // Particle system
 
     // Collection bin
     collectionBin: {
@@ -190,6 +191,7 @@ const Game = {
 
       bugs: [],
       monsters: [],
+      particles: [], // Reset particles
 
       collectionBin: {
         x: CONFIG.BIN.X,
@@ -203,6 +205,7 @@ const Game = {
   initializeWorld: () => {
     Game.state.bugs = [];
     Game.state.monsters = [];
+    Game.state.particles = []; // Initialize particles
 
     // Spawn bugs
     for (let i = 0; i < CONFIG.BUG_TYPES.length; i++) {
@@ -309,6 +312,9 @@ const Game = {
 
     Game.updatePlayer();
     Game.updateCamera();
+
+    // Update particles
+    UTILS.updateParticles(Game.state.particles);
   },
 
   // Update day phase
@@ -455,6 +461,10 @@ const Game = {
           name: CONFIG.BUG_TYPES[bug.type].name,
         };
 
+        // Create particle effect for bug collection
+        const particles = UTILS.createParticles(bug.x, bug.y, "BUG_COLLECTION");
+        Game.state.particles.push(...particles);
+
         // Remove bug from world
         Game.state.bugs[index] = null;
 
@@ -481,7 +491,26 @@ const Game = {
     if (dist < Game.state.collectionBin.size + Game.state.player.size) {
       // Deposit bug
       const carriedBugType = Game.state.player.carrying.type;
-      Game.state.currentOrder.collected.push(carriedBugType);
+
+      // Check if this bug type is needed for current order
+      const isNeeded = Game.state.currentOrder.bugs.includes(carriedBugType);
+      const alreadyCollected = Game.state.currentOrder.collected.filter(
+        (collected) => collected === carriedBugType
+      ).length;
+      const totalNeeded = Game.state.currentOrder.bugs.filter(
+        (needed) => needed === carriedBugType
+      ).length;
+
+      if (isNeeded && alreadyCollected < totalNeeded) {
+        // Add to collected bugs
+        Game.state.currentOrder.collected.push(carriedBugType);
+        console.log(
+          `Deposited ${CONFIG.BUG_TYPES[carriedBugType].name}. Order progress:`,
+          Game.state.currentOrder.collected
+        );
+      }
+
+      // Clear carried bug
       Game.state.player.carrying = null;
 
       // Respawn the bug
@@ -492,6 +521,7 @@ const Game = {
 
       // Check if order is complete
       if (OrderGenerator.isOrderComplete(Game.state.currentOrder)) {
+        console.log("Order completed!");
         Game.completeOrder();
       }
     }
@@ -501,6 +531,14 @@ const Game = {
   completeOrder: () => {
     Game.state.completedOrders++;
     Game.state.score += Game.state.currentOrder.bugs.length * 10;
+
+    // Create particle effect for order completion
+    const particles = UTILS.createParticles(
+      Game.state.collectionBin.x,
+      Game.state.collectionBin.y,
+      "ORDER_COMPLETE"
+    );
+    Game.state.particles.push(...particles);
 
     // Play completion sound
     UTILS.playAudio(CONFIG.AUDIO.ORDER_COMPLETE);
@@ -569,22 +607,26 @@ const Game = {
   // Transform bugs to monsters
   transformBugsToMonsters: () => {
     Game.state.monsters = [];
-    Game.state.bugs.forEach((bug) => {
+    Game.state.bugs.forEach((bug, index) => {
       if (!bug) return;
 
-      const monsterType = Math.floor(
-        Math.random() * CONFIG.MONSTERS.SPEEDS.length
-      );
+      // Each bug type becomes a specific monster type
+      const monsterType = index; // Direct mapping: bug type = monster type
       const monster = {
         x: bug.x,
         y: bug.y,
         type: monsterType,
+        originalBugType: index, // Track which bug it came from
         size: CONFIG.MONSTERS.SIZE,
         angle: Math.random() * Math.PI * 2,
         speed: CONFIG.MONSTERS.SPEEDS[monsterType],
+        huntPattern: CONFIG.MONSTERS.HUNT_PATTERNS[monsterType],
         alertLevel: 0,
         lastSeenX: 0,
         lastSeenY: 0,
+        wallCollisionCooldown: 0, // Prevent rapid wall bouncing
+        patrolTarget: { x: bug.x, y: bug.y }, // For patrol behavior
+        aggressionLevel: 0, // For berserker behavior
       };
 
       Game.state.monsters.push(monster);
@@ -618,9 +660,14 @@ const Game = {
     Game.state.monsters = [];
   },
 
-  // Update monsters
+  // Update monsters with improved AI and wall avoidance
   updateMonsters: () => {
     Game.state.monsters.forEach((monster) => {
+      // Decrease wall collision cooldown
+      if (monster.wallCollisionCooldown > 0) {
+        monster.wallCollisionCooldown--;
+      }
+
       const playerDist = UTILS.distance(
         monster.x,
         monster.y,
@@ -643,31 +690,25 @@ const Game = {
         monster.alertLevel = 1;
         monster.lastSeenX = Game.state.player.x;
         monster.lastSeenY = Game.state.player.y;
+
+        // Increase aggression for berserker type
+        if (monster.huntPattern === "berserker") {
+          monster.aggressionLevel = Math.min(
+            monster.aggressionLevel + 0.1,
+            2.0
+          );
+        }
       }
 
-      // Monster AI behavior
+      // Monster AI behavior based on hunt pattern
       if (monster.alertLevel === 0) {
-        // Random movement while searching
-        monster.angle += (Math.random() - 0.5) * 0.2;
-        monster.x += Math.cos(monster.angle) * monster.speed;
-        monster.y += Math.sin(monster.angle) * monster.speed;
+        Game.handleMonsterSearchBehavior(monster);
       } else {
-        // Chase player
-        const dx = Game.state.player.x - monster.x;
-        const dy = Game.state.player.y - monster.y;
-        const dist = Math.sqrt(dx ** 2 + dy ** 2);
-
-        if (dist > 0) {
-          monster.x += (dx / dist) * monster.speed * 1.5;
-          monster.y += (dy / dist) * monster.speed * 1.5;
-          monster.angle = Math.atan2(dy, dx);
-        }
-
-        // Lose alert if too far and can't see player
-        if (playerDist > 300 && !canSeePlayer) {
-          monster.alertLevel = 0;
-        }
+        Game.handleMonsterChaseBehavior(monster, playerDist, canSeePlayer);
       }
+
+      // Check for wall collisions and handle avoidance
+      Game.handleMonsterWallCollision(monster);
 
       // Keep monsters in bounds
       monster.x = UTILS.clamp(
@@ -681,6 +722,194 @@ const Game = {
         CONFIG.WORLD.HEIGHT - monster.size
       );
     });
+  },
+
+  // Handle monster search behavior when not chasing player
+  handleMonsterSearchBehavior: (monster) => {
+    switch (monster.huntPattern) {
+      case "aggressive":
+        // Random aggressive movement
+        monster.angle += (Math.random() - 0.5) * 0.3;
+        monster.x += Math.cos(monster.angle) * monster.speed;
+        monster.y += Math.sin(monster.angle) * monster.speed;
+        break;
+
+      case "stalker":
+        // Slow, methodical movement
+        monster.angle += (Math.random() - 0.5) * 0.1;
+        monster.x += Math.cos(monster.angle) * monster.speed * 0.5;
+        monster.y += Math.sin(monster.angle) * monster.speed * 0.5;
+        break;
+
+      case "patrol":
+        // Move towards patrol target, then pick new target
+        const patrolDist = UTILS.distance(
+          monster.x,
+          monster.y,
+          monster.patrolTarget.x,
+          monster.patrolTarget.y
+        );
+        if (patrolDist < 50) {
+          // Pick new patrol target
+          monster.patrolTarget = UTILS.randomPosition(
+            monster.size,
+            monster.size,
+            CONFIG.WORLD.WIDTH - monster.size,
+            CONFIG.WORLD.HEIGHT - monster.size
+          );
+        }
+        const patrolAngle = Math.atan2(
+          monster.patrolTarget.y - monster.y,
+          monster.patrolTarget.x - monster.x
+        );
+        monster.angle = patrolAngle;
+        monster.x += Math.cos(monster.angle) * monster.speed * 0.7;
+        monster.y += Math.sin(monster.angle) * monster.speed * 0.7;
+        break;
+
+      case "ambush":
+        // Mostly stationary, occasional repositioning
+        if (Math.random() < 0.02) {
+          monster.angle += (Math.random() - 0.5) * 0.5;
+          monster.x += Math.cos(monster.angle) * monster.speed * 0.3;
+          monster.y += Math.sin(monster.angle) * monster.speed * 0.3;
+        }
+        break;
+
+      case "pack":
+        // Try to stay near other monsters
+        let nearestMonster = null;
+        let nearestDist = Infinity;
+        Game.state.monsters.forEach((otherMonster) => {
+          if (otherMonster !== monster) {
+            const dist = UTILS.distance(
+              monster.x,
+              monster.y,
+              otherMonster.x,
+              otherMonster.y
+            );
+            if (dist < nearestDist) {
+              nearestDist = dist;
+              nearestMonster = otherMonster;
+            }
+          }
+        });
+
+        if (nearestMonster && nearestDist > 100) {
+          const packAngle = Math.atan2(
+            nearestMonster.y - monster.y,
+            nearestMonster.x - monster.x
+          );
+          monster.angle = packAngle;
+          monster.x += Math.cos(monster.angle) * monster.speed * 0.6;
+          monster.y += Math.sin(monster.angle) * monster.speed * 0.6;
+        } else {
+          // Random movement if close to pack
+          monster.angle += (Math.random() - 0.5) * 0.2;
+          monster.x += Math.cos(monster.angle) * monster.speed * 0.4;
+          monster.y += Math.sin(monster.angle) * monster.speed * 0.4;
+        }
+        break;
+
+      case "berserker":
+        // Erratic, fast movement
+        monster.angle += (Math.random() - 0.5) * 0.4;
+        monster.x += Math.cos(monster.angle) * monster.speed * 0.8;
+        monster.y += Math.sin(monster.angle) * monster.speed * 0.8;
+        break;
+
+      default:
+        // Default random movement
+        monster.angle += (Math.random() - 0.5) * 0.2;
+        monster.x += Math.cos(monster.angle) * monster.speed;
+        monster.y += Math.sin(monster.angle) * monster.speed;
+    }
+  },
+
+  // Handle monster chase behavior when pursuing player
+  handleMonsterChaseBehavior: (monster, playerDist, canSeePlayer) => {
+    const dx = Game.state.player.x - monster.x;
+    const dy = Game.state.player.y - monster.y;
+    const dist = Math.sqrt(dx ** 2 + dy ** 2);
+
+    if (dist > 0) {
+      let chaseSpeed = monster.speed * 1.5;
+
+      // Modify chase behavior based on hunt pattern
+      switch (monster.huntPattern) {
+        case "aggressive":
+          chaseSpeed *= 1.3;
+          break;
+        case "stalker":
+          chaseSpeed *= 0.8; // Stalkers are slower but persistent
+          break;
+        case "ambush":
+          chaseSpeed *= 2.0; // Ambush monsters are very fast when they strike
+          break;
+        case "pack":
+          // Pack monsters get speed boost if other monsters are also chasing
+          const chasingMonsters = Game.state.monsters.filter(
+            (m) => m.alertLevel === 1
+          ).length;
+          chaseSpeed *= 1 + chasingMonsters * 0.2;
+          break;
+        case "berserker":
+          chaseSpeed *= 1 + monster.aggressionLevel * 0.5;
+          break;
+      }
+
+      monster.x += (dx / dist) * chaseSpeed;
+      monster.y += (dy / dist) * chaseSpeed;
+      monster.angle = Math.atan2(dy, dx);
+    }
+
+    // Lose alert if too far and can't see player
+    if (playerDist > 400 && !canSeePlayer) {
+      monster.alertLevel = 0;
+      if (monster.huntPattern === "berserker") {
+        monster.aggressionLevel *= 0.9; // Slowly decrease aggression
+      }
+    }
+  },
+
+  // Handle monster wall collision and avoidance
+  handleMonsterWallCollision: (monster) => {
+    const margin = monster.size + 10;
+    let hitWall = false;
+
+    // Check wall collisions
+    if (monster.x < margin || monster.x > CONFIG.WORLD.WIDTH - margin) {
+      hitWall = true;
+      if (monster.wallCollisionCooldown === 0) {
+        monster.angle = Math.PI - monster.angle; // Reflect horizontally
+        monster.wallCollisionCooldown = 30; // Prevent rapid bouncing
+      }
+    }
+
+    if (monster.y < margin || monster.y > CONFIG.WORLD.HEIGHT - margin) {
+      hitWall = true;
+      if (monster.wallCollisionCooldown === 0) {
+        monster.angle = -monster.angle; // Reflect vertically
+        monster.wallCollisionCooldown = 30; // Prevent rapid bouncing
+      }
+    }
+
+    // Additional avoidance behavior for some monster types
+    if (hitWall) {
+      switch (monster.huntPattern) {
+        case "stalker":
+          // Stalkers try to find a way around walls
+          monster.angle += (Math.random() - 0.5) * Math.PI * 0.5;
+          break;
+        case "berserker":
+          // Berserkers get more aggressive when hitting walls
+          monster.aggressionLevel = Math.min(
+            monster.aggressionLevel + 0.2,
+            2.0
+          );
+          break;
+      }
+    }
   },
 
   // Check monster collision
@@ -741,7 +970,8 @@ const Game = {
         <div class="order-popup">
           <h3>${MESSAGES.ORDERS.ORDER_PREFIX}${Game.state.currentOrder.id}</h3>
           <p>${MESSAGES.ORDERS.LINDA_INTRO}</p>
-          <p>${MESSAGES.ORDERS.ORDER_INTRO}${orderDisplay.needed}</p>
+          <p>${MESSAGES.ORDERS.ORDER_INTRO}</p>
+          <div class="order-bugs-display">${orderDisplay.neededHTML}</div>
           <button id="hunt-button" class="start-button">${MESSAGES.ORDERS.HUNT_BUTTON}</button>
         </div>
       </div>
@@ -768,6 +998,14 @@ const Game = {
     // Set up rendering
     Game.renderWorld(ctx);
     Game.renderEntities(ctx);
+
+    // Render particles
+    UTILS.renderParticles(
+      ctx,
+      Game.state.particles,
+      Game.state.camera.x,
+      Game.state.camera.y
+    );
   },
 
   // Render world
@@ -962,9 +1200,16 @@ const Game = {
       ctx.arc(x + 4, y + 4, monster.size, 0, Math.PI * 2);
       ctx.fill();
 
-      // Monster body
-      const colors = ["#8b0000", "#4b0082", "#006400"];
-      ctx.fillStyle = colors[monster.type];
+      // Monster body with unique colors per type
+      const colors = [
+        "#8b0000",
+        "#4b0082",
+        "#006400",
+        "#8b4513",
+        "#2f4f4f",
+        "#800080",
+      ];
+      ctx.fillStyle = colors[monster.type] || "#8b0000";
       ctx.beginPath();
       ctx.arc(x, y, monster.size, 0, Math.PI * 2);
       ctx.fill();
@@ -974,11 +1219,25 @@ const Game = {
       ctx.lineWidth = 3;
       ctx.stroke();
 
-      // Monster image or emoji
+      // Monster image based on original bug type
+      const monsterImageKeys = [
+        "firefly_monster",
+        "beetle_monster",
+        "butterfly_monster",
+        "ladybug_monster",
+        "grasshopper_monster",
+        "dragonfly_monster",
+      ];
+
+      const monsterEmojis = ["🔥", "🪲", "🦇", "🔴", "🦂", "🐉"];
+
+      const imageKey = monsterImageKeys[monster.type] || "monster";
+      const emoji = monsterEmojis[monster.type] || "👹";
+
       UTILS.drawImageOrEmoji(
         ctx,
-        "monster",
-        "👹",
+        imageKey,
+        emoji,
         x,
         y,
         monster.size * 1.6,
@@ -1083,7 +1342,7 @@ const Game = {
       const orderText = OrderGenerator.getOrderDisplayText(
         Game.state.currentOrder
       );
-      orderDisplay.innerHTML = orderText.needed; // Using text without emojis
+      orderDisplay.innerHTML = orderText.remainingHTML; // Show remaining bugs with images
     }
 
     // Update phase timer
