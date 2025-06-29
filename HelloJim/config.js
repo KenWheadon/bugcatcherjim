@@ -66,7 +66,7 @@ const DIALOGUES = {
   26: "🪲🐔 CHICKEN-BEETLE! I hop around edges with armor! 6 HP!",
   27: "👻🐔 GHOST-CHICKEN! I phase in and out! Can you catch me? 4 HP!",
   28: "💰 Congratulations! You've earned GOLD! Collect 10 pieces!",
-  29: "🎉 You're doing great! Here's your FINISH GAME button!",
+  29: "💰 Click the FINISH button to collect gold! You need 10 pieces!",
   30: "😂 HAHAHAHA! You can't finish me! Try the LOSE button!",
   31: "😔 Oh... you actually want to lose? How sad... Let's play FIND THE JIM!",
   32: "🎪 I'm under one of these cups! Pick wisely... HAHAHAHA!",

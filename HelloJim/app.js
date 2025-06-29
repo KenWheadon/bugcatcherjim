@@ -52,13 +52,6 @@ class JimGame {
     this.createSparkle(this.jimImage.getBoundingClientRect());
   }
 
-  // Helper method to prevent Jim clicking during button phases
-  preventJimClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    return false;
-  };
-
   // Helper function to keep positions within screen bounds
   keepWithinBounds(x, y, elementWidth, elementHeight) {
     const margin = 20;
@@ -75,10 +68,27 @@ class JimGame {
     e.preventDefault();
     e.stopPropagation();
 
-    // Absolutely prevent clicking Jim during button phases (29-31)
-    if (this.currentJim >= 29 && this.currentJim <= 31) {
-      console.log("Jim clicking blocked during button phase");
-      return false;
+    // Special handling for button phases
+    if (this.currentJim === 29) {
+      // Finish button phase - award gold
+      this.awardGold(e.clientX, e.clientY);
+
+      // Check if we have enough gold to advance
+      if (this.goldEarned >= GAME_CONFIG.UI.GOLD_TARGET) {
+        setTimeout(() => {
+          this.removeGoldCounter();
+          this.currentJim = 30;
+          this.updateDisplay();
+          this.updateProgressBar();
+        }, 1000);
+      }
+      return;
+    } else if (this.currentJim === 30) {
+      // Lose button phase - just advance
+      this.currentJim = 31;
+      this.updateDisplay();
+      this.updateProgressBar();
+      return;
     }
 
     const now = Date.now();
@@ -214,15 +224,29 @@ class JimGame {
   }
 
   updateDisplay() {
-    // Handle image loading - use actual jim number for fusion images, otherwise cap at 22
-    let jimImageNumber;
-    if (GAME_CONFIG.FUSION_IMAGES.includes(this.currentJim)) {
-      jimImageNumber = this.currentJim; // Use jim25.png, jim26.png, jim27.png
+    // Handle image loading - special cases for button phases
+    let jimImageSrc;
+    let hideJimOffscreen = false;
+
+    if (this.currentJim === 29) {
+      // Finish button phase - show finish.png instead of Jim
+      jimImageSrc = "finish.png";
+      hideJimOffscreen = true;
+    } else if (this.currentJim === 30) {
+      // Lose button phase - show lose.png instead of Jim
+      jimImageSrc = "lose.png";
+      hideJimOffscreen = true;
+    } else if (GAME_CONFIG.FUSION_IMAGES.includes(this.currentJim)) {
+      jimImageSrc = `jim${this.currentJim}.png`; // Use jim25.png, jim26.png, jim27.png
     } else {
-      jimImageNumber = Math.min(this.currentJim, GAME_CONFIG.MAX_JIM_IMAGES); // Cap at jim22.png
+      // Standard jim images (cap at jim22.png)
+      jimImageSrc = `jim${Math.min(
+        this.currentJim,
+        GAME_CONFIG.MAX_JIM_IMAGES
+      )}.png`;
     }
 
-    this.jimImage.src = `jim${jimImageNumber}.png`;
+    this.jimImage.src = jimImageSrc;
     this.dialogueText.textContent = DIALOGUES[this.currentJim] || "...";
 
     // Add dialogue animation
@@ -230,26 +254,36 @@ class JimGame {
 
     // Reset positioning and movement
     this.stopMovement();
-    this.jimImage.style.position = "static";
     this.jimImage.className = "jim-image"; // Reset classes
+
+    // Add button styling for button phases
+    if (this.currentJim === 29 || this.currentJim === 30) {
+      this.jimImage.classList.add("button-image");
+    }
 
     // CRITICAL FIX: Ensure Jim image is visible by removing any display override
     this.jimImage.style.display = "";
 
-    // Re-enable Jim clicking EXCEPT during button phases (29-31)
-    if (this.currentJim >= 29 && this.currentJim <= 31) {
-      this.jimImage.style.pointerEvents = "none";
-      this.jimImage.style.cursor = "default";
-    } else {
+    // Handle button phases - center the button images
+    if (hideJimOffscreen) {
+      this.jimImage.style.position = "static";
+      this.jimImage.style.left = "";
+      this.jimImage.style.top = "";
       this.jimImage.style.pointerEvents = "auto";
       this.jimImage.style.cursor = "pointer";
-      // Remove any lingering event listeners from button phases
-      this.jimImage.removeEventListener("click", this.preventJimClick);
-      this.jimImage.removeEventListener("mousedown", this.preventJimClick);
+    } else {
+      // Normal positioning for non-button phases
+      this.jimImage.style.position = "static";
+      this.jimImage.style.left = "";
+      this.jimImage.style.top = "";
+      this.jimImage.style.pointerEvents = "auto";
+      this.jimImage.style.cursor = "pointer";
     }
 
-    // Add personality-based animations
-    this.addPersonalityAnimation();
+    // Add personality-based animations (but not for button phases)
+    if (!hideJimOffscreen) {
+      this.addPersonalityAnimation();
+    }
 
     // HP system for beetles (11-17), moth (18), and fusion phases (25-27)
     if (
@@ -265,17 +299,19 @@ class JimGame {
       this.hpContainer.style.display = "none";
     }
 
-    // Special behaviors
-    if (this.currentJim === 18) {
-      this.startFlyingBehavior();
-    } else if (this.currentJim >= 19 && this.currentJim <= 22) {
-      this.startHoppingBehavior();
-    } else if (this.currentJim === 25) {
-      this.startBeetleMothBehavior();
-    } else if (this.currentJim === 26) {
-      this.startChickenBeetleBehavior();
-    } else if (this.currentJim === 27) {
-      this.startGhostChickenBehavior();
+    // Special behaviors (but not for button phases)
+    if (!hideJimOffscreen) {
+      if (this.currentJim === 18) {
+        this.startFlyingBehavior();
+      } else if (this.currentJim >= 19 && this.currentJim <= 22) {
+        this.startHoppingBehavior();
+      } else if (this.currentJim === 25) {
+        this.startBeetleMothBehavior();
+      } else if (this.currentJim === 26) {
+        this.startChickenBeetleBehavior();
+      } else if (this.currentJim === 27) {
+        this.startGhostChickenBehavior();
+      }
     }
   }
 
@@ -574,9 +610,8 @@ class JimGame {
     this.hpContainer.style.display = "none";
     this.comboCounter.style.display = "none";
 
-    const finishBtn = document.getElementById("finish-btn");
+    // Clean up any remaining gold counter
     const goldCounter = document.getElementById("gold-counter-above-jim");
-    if (finishBtn) finishBtn.remove();
     if (goldCounter) goldCounter.remove();
 
     this.gameContainer.classList.add("screen-shake");
@@ -872,107 +907,23 @@ class JimGame {
     // Reset gold counter for this phase
     this.goldEarned = 0;
 
-    // Jim should be visible but completely non-clickable during button phases
-    this.jimImage.style.pointerEvents = "none";
-    this.jimImage.style.cursor = "default";
-
     // Create gold counter above Jim
     this.createGoldCounterAboveJim();
 
-    const finishBtn = document.createElement("img");
-    finishBtn.id = "finish-btn";
-    finishBtn.src = "finish.png";
-    finishBtn.classList.add("floating-button");
-
-    // Position button randomly within safe bounds
-    const safeMargin = 100;
-    const startX =
-      safeMargin + Math.random() * (window.innerWidth - safeMargin * 2 - 120);
-    const startY =
-      safeMargin + Math.random() * (window.innerHeight - safeMargin * 2 - 60);
-
-    finishBtn.style.left = startX + "px";
-    finishBtn.style.top = startY + "px";
-    finishBtn.draggable = false;
-
-    finishBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Award gold and create coin animation
-      this.awardGold(e.clientX, e.clientY);
-
-      // Check if we have enough gold to advance
-      if (this.goldEarned >= GAME_CONFIG.UI.GOLD_TARGET) {
-        finishBtn.classList.add("clicked");
-
-        setTimeout(() => {
-          finishBtn.remove();
-          this.removeGoldCounter();
-          this.currentJim = 30;
-          this.updateDisplay();
-          this.updateProgressBar();
-        }, 1000);
-      }
-    });
-
-    // Prevent any interaction with Jim during this phase
-    this.jimImage.addEventListener("click", this.preventJimClick);
-    this.jimImage.addEventListener("mousedown", this.preventJimClick);
-
-    document.body.appendChild(finishBtn);
+    // updateDisplay() will handle showing finish.png and hiding Jim offscreen
   }
 
   startLoseButtonPhase() {
-    // Jim should be visible but completely non-clickable during button phases
-    this.jimImage.style.pointerEvents = "none";
-    this.jimImage.style.cursor = "default";
-
-    const loseBtn = document.createElement("img");
-    loseBtn.id = "lose-btn";
-    loseBtn.src = "lose.png";
-    loseBtn.classList.add("floating-button");
-
-    // Position button randomly within safe bounds
-    const safeMargin = 100;
-    const startX =
-      safeMargin + Math.random() * (window.innerWidth - safeMargin * 2 - 120);
-    const startY =
-      safeMargin + Math.random() * (window.innerHeight - safeMargin * 2 - 60);
-
-    loseBtn.style.left = startX + "px";
-    loseBtn.style.top = startY + "px";
-    loseBtn.draggable = false;
-
-    loseBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      loseBtn.classList.add("clicked");
-
-      setTimeout(() => {
-        loseBtn.remove();
-        this.currentJim = 31;
-        this.updateDisplay();
-        this.updateProgressBar();
-      }, 400);
-    });
-
-    // Prevent any interaction with Jim during this phase
-    this.jimImage.addEventListener("click", this.preventJimClick);
-    this.jimImage.addEventListener("mousedown", this.preventJimClick);
-
-    document.body.appendChild(loseBtn);
+    // updateDisplay() will handle showing lose.png and hiding Jim offscreen
   }
 
   startCupGame() {
     // Hide Jim initially
     this.jimImage.style.display = "none";
 
-    // Re-enable Jim clicking for after cup game - remove any lingering prevention
+    // Re-enable Jim clicking for after cup game
     this.jimImage.style.pointerEvents = "auto";
     this.jimImage.style.cursor = "pointer";
-    this.jimImage.removeEventListener("click", this.preventJimClick);
-    this.jimImage.removeEventListener("mousedown", this.preventJimClick);
 
     this.cupGame.gameActive = false; // Start with cups non-clickable
     this.cupGame.cups = [];
@@ -1177,11 +1128,7 @@ class JimGame {
     this.stopMovement();
 
     // Clean up any remaining elements
-    const finishBtn = document.getElementById("finish-btn");
-    const loseBtn = document.getElementById("lose-btn");
     const goldCounter = document.getElementById("gold-counter-above-jim");
-    if (finishBtn) finishBtn.remove();
-    if (loseBtn) loseBtn.remove();
     if (goldCounter) goldCounter.remove();
     this.cleanupMinions();
 
