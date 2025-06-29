@@ -68,6 +68,11 @@ class JimGame {
     e.preventDefault();
     e.stopPropagation();
 
+    // Don't allow clicking Jim during button phases (29-31)
+    if (this.currentJim >= 29 && this.currentJim <= 31) {
+      return;
+    }
+
     const now = Date.now();
 
     // Combo system
@@ -178,7 +183,18 @@ class JimGame {
       this.startGoldPhase();
       return;
     } else if (this.currentJim === 29) {
-      this.showFinishButton();
+      this.startFinishButtonPhase();
+      return;
+    } else if (this.currentJim === 30) {
+      this.startLoseButtonPhase();
+      return;
+    } else if (this.currentJim === 31) {
+      // Brief pause, then advance to cup game
+      setTimeout(() => {
+        this.currentJim = 32;
+        this.updateDisplay();
+        this.updateProgressBar();
+      }, 2000);
       return;
     } else if (this.currentJim === 32) {
       this.startCupGame();
@@ -211,6 +227,11 @@ class JimGame {
 
     // CRITICAL FIX: Ensure Jim image is visible by removing any display override
     this.jimImage.style.display = "";
+
+    // Re-enable Jim clicking EXCEPT during button phases (29-31)
+    if (this.currentJim < 29 || this.currentJim > 31) {
+      this.jimImage.style.pointerEvents = "auto";
+    }
 
     // Add personality-based animations
     this.addPersonalityAnimation();
@@ -528,6 +549,8 @@ class JimGame {
       clearInterval(this.moveInterval);
       this.moveInterval = null;
     }
+    // Reset opacity for ghost chicken phase
+    this.jimImage.style.opacity = "1";
   }
 
   startParticleShow() {
@@ -705,6 +728,7 @@ class JimGame {
     this.createGoldCounter();
     this.currentJim = 29;
     this.updateDisplay();
+    this.updateProgressBar();
   }
 
   createGoldCounter() {
@@ -733,7 +757,10 @@ class JimGame {
     }, 1000);
   }
 
-  showFinishButton() {
+  startFinishButtonPhase() {
+    // Jim should be visible but not clickable during button phases
+    this.jimImage.style.pointerEvents = "none";
+
     const finishBtn = document.createElement("button");
     finishBtn.id = "finish-btn";
     finishBtn.textContent = "FINISH GAME";
@@ -750,34 +777,61 @@ class JimGame {
     finishBtn.style.borderRadius = "10px";
     finishBtn.style.cursor = "pointer";
     finishBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
+    finishBtn.style.zIndex = "1000";
 
-    let clickCount = 0;
     finishBtn.addEventListener("click", () => {
-      clickCount++;
-      if (clickCount === 1) {
-        this.currentJim = 30;
-        this.updateDisplay();
-        finishBtn.textContent = "LOSE";
-        finishBtn.style.background = "linear-gradient(135deg, #666, #333)";
-      } else {
-        this.currentJim = 31;
-        this.updateDisplay();
-        finishBtn.remove();
-        setTimeout(() => {
-          this.currentJim = 32;
-          this.updateDisplay();
-        }, 2000);
-      }
+      finishBtn.remove();
+      this.currentJim = 30;
+      this.updateDisplay();
+      this.updateProgressBar();
     });
 
     document.body.appendChild(finishBtn);
   }
 
+  startLoseButtonPhase() {
+    // Jim should be visible but not clickable during button phases
+    this.jimImage.style.pointerEvents = "none";
+
+    const loseBtn = document.createElement("button");
+    loseBtn.id = "lose-btn";
+    loseBtn.textContent = "LOSE";
+    loseBtn.style.position = "fixed";
+    loseBtn.style.bottom = "50px";
+    loseBtn.style.left = "50%";
+    loseBtn.style.transform = "translateX(-50%)";
+    loseBtn.style.padding = "15px 30px";
+    loseBtn.style.fontSize = "1.3em";
+    loseBtn.style.fontWeight = "bold";
+    loseBtn.style.background = "linear-gradient(135deg, #666, #333)";
+    loseBtn.style.color = "white";
+    loseBtn.style.border = "none";
+    loseBtn.style.borderRadius = "10px";
+    loseBtn.style.cursor = "pointer";
+    loseBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
+    loseBtn.style.zIndex = "1000";
+
+    loseBtn.addEventListener("click", () => {
+      loseBtn.remove();
+      this.currentJim = 31;
+      this.updateDisplay();
+      this.updateProgressBar();
+    });
+
+    document.body.appendChild(loseBtn);
+  }
+
   startCupGame() {
+    // Hide Jim initially
     this.jimImage.style.display = "none";
-    this.cupGame.gameActive = true;
+
+    // Re-enable Jim clicking for after cup game
+    this.jimImage.style.pointerEvents = "auto";
+
+    this.cupGame.gameActive = false; // Start with cups non-clickable
     this.cupGame.cups = [];
 
+    // Create 3 cups
     for (let i = 0; i < GAME_CONFIG.UI.CUP_COUNT; i++) {
       const cup = document.createElement("div");
       cup.style.position = "absolute";
@@ -787,29 +841,17 @@ class JimGame {
       cup.style.borderRadius = "60px 60px 10px 10px";
       cup.style.left = window.innerWidth / 2 - 180 + i * 120 + "px";
       cup.style.top = window.innerHeight / 2 + "px";
-      cup.style.cursor = "pointer";
+      cup.style.cursor = "not-allowed";
       cup.style.border = "3px solid #654321";
       cup.style.boxShadow = "0 10px 20px rgba(0, 0, 0, 0.5)";
       cup.style.transition = "transform 0.3s ease";
-
-      cup.addEventListener("mouseenter", () => {
-        cup.style.transform = "scale(1.05)";
-      });
-
-      cup.addEventListener("mouseleave", () => {
-        cup.style.transform = "scale(1)";
-      });
-
-      cup.addEventListener("click", () => {
-        if (this.cupGame.gameActive) {
-          this.handleCupClick();
-        }
-      });
+      cup.dataset.cupIndex = i;
 
       this.gameContainer.appendChild(cup);
       this.cupGame.cups.push(cup);
     }
 
+    // Show Jim under middle cup briefly
     const jimUnderCup = document.createElement("img");
     jimUnderCup.src = "jim1.png";
     jimUnderCup.style.position = "absolute";
@@ -817,25 +859,72 @@ class JimGame {
     jimUnderCup.style.height = "60px";
     jimUnderCup.style.left = window.innerWidth / 2 - 30 + "px";
     jimUnderCup.style.top = window.innerHeight / 2 + 100 + "px";
+    jimUnderCup.style.zIndex = "50";
     this.gameContainer.appendChild(jimUnderCup);
 
+    // Show initial dialogue
+    this.dialogueText.textContent = "🎪 Catch me if you can!";
+
+    // After 2 seconds, hide Jim and make cups clickable
     setTimeout(() => {
       jimUnderCup.remove();
-      this.dialogueText.textContent = "🎪 Now pick a cup! Where is Jim?";
+      this.dialogueText.textContent =
+        "🎪 I'm under one of these cups! Pick one!";
+
+      // Make cups clickable
+      this.cupGame.gameActive = true;
+      this.cupGame.cups.forEach((cup) => {
+        cup.style.cursor = "pointer";
+        cup.addEventListener("click", () => this.handleCupClick());
+        cup.addEventListener("mouseenter", () => {
+          if (this.cupGame.gameActive) {
+            cup.style.transform = "scale(1.05)";
+          }
+        });
+        cup.addEventListener("mouseleave", () => {
+          cup.style.transform = "scale(1)";
+        });
+      });
     }, 2000);
   }
 
   handleCupClick() {
+    if (!this.cupGame.gameActive) return;
+
     this.cupGame.gameActive = false;
 
-    this.cupGame.cups.forEach((cup) => cup.remove());
+    // Show all cups are empty
+    this.dialogueText.textContent = "😈 HAHAHAHA! I wasn't under ANY cup!";
 
-    this.dialogueText.textContent =
-      "😈 HAHAHAHA! You can NEVER win! I wasn't under any cup!";
+    // Animate cups lifting to show they're empty
+    this.cupGame.cups.forEach((cup, index) => {
+      setTimeout(() => {
+        cup.style.transform = "translateY(-50px)";
+        cup.style.cursor = "default";
+      }, index * 200);
+    });
 
+    // After revealing all cups, bring Jim back to center
     setTimeout(() => {
-      this.currentJim = 33; // Trigger final particle show
-      this.updateDisplay();
+      // Clean up cups
+      this.cupGame.cups.forEach((cup) => cup.remove());
+      this.cupGame.cups = [];
+
+      // Restore Jim to center and make game continue
+      this.jimImage.style.display = "block";
+      this.jimImage.style.position = "static";
+      this.jimImage.style.left = "";
+      this.jimImage.style.top = "";
+      this.jimImage.style.opacity = "1";
+
+      // Continue to next phase or trigger particle show
+      if (this.currentJim >= this.maxJim) {
+        this.startParticleShow();
+      } else {
+        this.currentJim++;
+        this.updateDisplay();
+        this.updateProgressBar();
+      }
     }, 3000);
   }
 
@@ -943,10 +1032,16 @@ class JimGame {
 
     // Clean up any remaining elements
     const finishBtn = document.getElementById("finish-btn");
+    const loseBtn = document.getElementById("lose-btn");
     const goldCounter = document.getElementById("gold-counter");
     if (finishBtn) finishBtn.remove();
+    if (loseBtn) loseBtn.remove();
     if (goldCounter) goldCounter.remove();
     this.cleanupMinions();
+
+    // Clean up any remaining cups
+    this.cupGame.cups.forEach((cup) => cup.remove());
+    this.cupGame = { cups: [], correctCup: -1, gameActive: false };
 
     // Reset display
     this.jimImage.style.display = "block";

@@ -1,1157 +1,1067 @@
-// Bug Catcher Jim - Main game application (Game Jam Pivot)
-const Game = {
-  // Game state
-  state: {
-    screen: "start", // 'start', 'game', 'stage-transition', 'game-over'
-    stage: 1, // 1, 2, or 3
-    score: 0,
-    stageScores: [0, 0, 0], // Scores for each stage
-    gameLoopId: null,
+class JimGame {
+  constructor() {
+    this.currentJim = 1;
+    this.maxJim = GAME_CONFIG.MAX_JIM;
+    this.hp = 0;
+    this.maxHp = 0;
+    this.clicksRequired = 1;
+    this.currentClicks = 0;
+    this.isMoving = false;
+    this.moveInterval = null;
+    this.particles = [];
+    this.comboCount = 0;
+    this.lastClickTime = 0;
+    this.beetleClickCount = 0;
+    this.minions = [];
+    this.defeatedMinions = 0;
+    this.goldEarned = 0;
+    this.cupGame = { cups: [], correctCup: -1, gameActive: false };
 
-    // Stamina system
-    stamina: CONFIG.STAMINA.MAX,
-    isSprinting: false,
+    // Jim8 multi-click tracking
+    this.jim8ClickCount = 0;
 
-    // Player state
-    player: {
-      x: CONFIG.PLAYER.START_X,
-      y: CONFIG.PLAYER.START_Y,
-      size: CONFIG.PLAYER.SIZE,
-      speed: CONFIG.PLAYER.SPEED,
-      carrying: [], // Array of carried bugs
-      rotation: 0, // For head rolling animation in stage 3
-      lastX: CONFIG.PLAYER.START_X,
-      lastY: CONFIG.PLAYER.START_Y,
-    },
+    // Get DOM elements
+    this.jimImage = document.getElementById("jim-image");
+    this.dialogueBox = document.getElementById("dialogue-box");
+    this.dialogueText = document.getElementById("dialogue-text");
+    this.hpContainer = document.getElementById("hp-bar-container");
+    this.hpFill = document.getElementById("hp-fill");
+    this.hpText = document.getElementById("hp-text");
+    this.particleContainer = document.getElementById("particle-container");
+    this.gameContainer = document.getElementById("game-container");
+    this.progressFill = document.getElementById("progress-fill");
+    this.comboCounter = document.getElementById("combo-counter");
+    this.progressBar = document.querySelector(".progress-bar");
 
-    // Camera state
-    camera: {
-      x: 0,
-      y: 0,
-    },
+    this.init();
+  }
 
-    // World entities
-    bugs: [],
-    monsters: [],
-    particles: [], // Particle system
+  init() {
+    this.updateDisplay();
+    this.updateProgressBar();
 
-    // Collection bin
-    collectionBin: {
-      x: CONFIG.BIN.X,
-      y: CONFIG.BIN.Y,
-      size: CONFIG.BIN.SIZE,
-    },
-  },
+    // Prevent dragging on main Jim image - using draggable attribute is more reliable
+    this.jimImage.draggable = false;
 
-  // Input handling
-  keys: {},
-  resizeTimeout: null,
+    // Use mousedown instead of click for better responsiveness on moving elements
+    this.jimImage.addEventListener("mousedown", (e) => this.handleClick(e));
 
-  // Initialize the game
-  init: async () => {
-    console.log("Initializing Bug Catcher Jim...");
+    document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
 
-    // Calculate and set canvas dimensions based on screen size
-    UTILS.updateCanvasDimensions();
+    // Add some initial sparkle
+    this.createSparkle(this.jimImage.getBoundingClientRect());
+  }
 
-    // Load all images first
-    try {
-      await UTILS.loadImages();
-      console.log("Images loaded successfully");
-    } catch (error) {
-      console.error("Error loading images:", error);
+  // Helper function to keep positions within screen bounds
+  keepWithinBounds(x, y, elementWidth, elementHeight) {
+    const margin = 20;
+    const maxX = window.innerWidth - elementWidth - margin;
+    const maxY = window.innerHeight - elementHeight - margin;
+
+    const boundedX = Math.max(margin, Math.min(maxX, x));
+    const boundedY = Math.max(margin, Math.min(maxY, y));
+
+    return { x: boundedX, y: boundedY };
+  }
+
+  handleClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Don't allow clicking Jim during button phases (29-31)
+    if (this.currentJim >= 29 && this.currentJim <= 31) {
+      return;
     }
 
-    // Initialize start screen
-    StartScreen.init();
+    const now = Date.now();
 
-    // Setup input handling
-    Game.setupInput();
+    // Combo system
+    if (now - this.lastClickTime < 1000) {
+      this.comboCount++;
+    } else {
+      this.comboCount = 1;
+    }
+    this.lastClickTime = now;
+    this.updateComboCounter();
 
-    // Setup canvas
-    Game.setupCanvas();
+    // Visual feedback
+    this.addClickEffect(e);
+    this.jimImage.classList.add("clicked");
+    setTimeout(
+      () => this.jimImage.classList.remove("clicked"),
+      GAME_CONFIG.TIMINGS.CLICK_ANIMATION
+    );
 
-    // Handle window resize
-    Game.setupResizeHandler();
-  },
+    // Screen shake for impact
+    if (this.currentJim >= 11) {
+      this.screenShake();
+    }
 
-  // Setup resize handler for responsive gameplay
-  setupResizeHandler: () => {
-    window.addEventListener("resize", () => {
-      // Debounce resize events
-      clearTimeout(Game.resizeTimeout);
-      Game.resizeTimeout = setTimeout(() => {
-        if (Game.state.screen === "game") {
-          // Update canvas dimensions
-          UTILS.updateCanvasDimensions();
-          Game.setupCanvas();
-          console.log("Canvas resized for gameplay");
+    // Special handling for Jim8 extended clicks
+    if (this.currentJim === 8) {
+      this.jim8ClickCount++;
+
+      // Update dialogue based on click count
+      if (this.jim8ClickCount <= 4) {
+        this.dialogueText.textContent = JIM8_DIALOGUES[this.jim8ClickCount - 1];
+        this.dialogueBox.style.animation = "dialoguePulse 0.5s ease-out";
+
+        // After first click, start jumping animation
+        if (this.jim8ClickCount === 2) {
+          this.jimImage.classList.remove("dead-jim");
+          this.jimImage.classList.add("dead-jim-jumping");
         }
-      }, 250);
-    });
-  },
 
-  // Setup input event listeners
-  setupInput: () => {
-    document.addEventListener("keydown", (e) => {
-      if (!Game.keys[e.key.toLowerCase()]) {
-        Game.keys[e.key.toLowerCase()] = true;
-
-        // Handle sprinting - only start if space was just pressed
-        if (e.key === " " || e.key === "Space") {
-          e.preventDefault();
-          Game.startSprinting();
+        // Only advance to next Jim after 4 clicks
+        if (this.jim8ClickCount >= 4) {
+          this.jim8ClickCount = 0; // Reset for next time
+          this.currentJim++;
+          this.updateDisplay();
+          this.updateProgressBar();
         }
       }
-    });
+      return;
+    }
 
-    document.addEventListener("keyup", (e) => {
-      Game.keys[e.key.toLowerCase()] = false;
+    this.currentClicks++;
 
-      // Handle sprint stop - stop when space is released
-      if (e.key === " " || e.key === "Space") {
-        e.preventDefault();
-        Game.stopSprinting();
-      }
-    });
-  },
-
-  // Start sprinting if allowed
-  startSprinting: () => {
-    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
     if (
-      stageConfig.canSprint &&
-      Game.state.stamina > 0 &&
-      !Game.state.isSprinting
+      (this.currentJim >= 11 && this.currentJim <= 18) ||
+      (this.currentJim >= 25 && this.currentJim <= 27)
     ) {
-      Game.state.isSprinting = true;
-      UTILS.playAudio(CONFIG.AUDIO.SPRINT_START, 0.3);
-    }
-  },
+      // HP system active
+      this.hp = Math.max(0, this.hp - 1);
+      this.updateHPBar();
 
-  // Stop sprinting
-  stopSprinting: () => {
-    if (Game.state.isSprinting) {
-      Game.state.isSprinting = false;
-      UTILS.playAudio(CONFIG.AUDIO.SPRINT_STOP, 0.3);
-    }
-  },
-
-  // Setup canvas
-  setupCanvas: () => {
-    let canvas = document.getElementById("gameCanvas");
-
-    // Remove existing canvas if it exists
-    if (canvas) {
-      canvas.remove();
-    }
-
-    // Create new canvas with current dimensions
-    canvas = document.createElement("canvas");
-    canvas.id = "gameCanvas";
-    canvas.width = CONFIG.WORLD.CANVAS_WIDTH;
-    canvas.height = CONFIG.WORLD.CANVAS_HEIGHT;
-    canvas.style.display = "none"; // Hidden by default
-
-    // Add canvas to game container
-    const gameContainer = document.getElementById("game-container");
-    gameContainer.appendChild(canvas);
-
-    console.log(
-      `Canvas setup: ${CONFIG.WORLD.CANVAS_WIDTH}x${CONFIG.WORLD.CANVAS_HEIGHT}`
-    );
-  },
-
-  // Start a new game
-  startGame: () => {
-    Game.resetGame();
-    Game.state.screen = "game";
-    Game.state.stage = 1;
-    Game.state.score = 0;
-    Game.state.stageScores = [0, 0, 0];
-    Game.state.stamina = CONFIG.STAMINA.MAX;
-
-    // Start background music
-    UTILS.switchBackgroundMusic(CONFIG.AUDIO.BACKGROUND_MUSIC);
-
-    // Initialize world
-    Game.initializeWorld();
-
-    // Show game and start loop
-    Game.showGameUI();
-    Game.startGameLoop();
-  },
-
-  // Reset game state
-  resetGame: () => {
-    if (Game.state.gameLoopId) {
-      cancelAnimationFrame(Game.state.gameLoopId);
-      Game.state.gameLoopId = null;
-    }
-
-    Game.state = {
-      screen: "start",
-      stage: 1,
-      score: 0,
-      stageScores: [0, 0, 0],
-      gameLoopId: null,
-      stamina: CONFIG.STAMINA.MAX,
-      isSprinting: false,
-
-      player: {
-        x: CONFIG.PLAYER.START_X,
-        y: CONFIG.PLAYER.START_Y,
-        size: CONFIG.PLAYER.SIZE,
-        speed: CONFIG.PLAYER.SPEED,
-        carrying: [],
-        rotation: 0,
-        lastX: CONFIG.PLAYER.START_X,
-        lastY: CONFIG.PLAYER.START_Y,
-      },
-
-      camera: {
-        x: 0,
-        y: 0,
-      },
-
-      bugs: [],
-      monsters: [],
-      particles: [],
-
-      collectionBin: {
-        x: CONFIG.BIN.X,
-        y: CONFIG.BIN.Y,
-        size: CONFIG.BIN.SIZE,
-      },
-    };
-  },
-
-  // Initialize world entities
-  initializeWorld: () => {
-    Game.state.bugs = [];
-    Game.state.monsters = [];
-    Game.state.particles = [];
-
-    // Spawn initial bugs (one of each type)
-    for (let i = 0; i < CONFIG.BUG_TYPES.length; i++) {
-      Game.spawnBug(i);
-    }
-  },
-
-  // Spawn a bug of specific type
-  spawnBug: (typeIndex, atEdge = false) => {
-    let attempts = 0;
-    let validPosition = false;
-    let bug;
-
-    while (!validPosition && attempts < 50) {
-      const pos = atEdge
-        ? UTILS.randomEdgePosition()
-        : UTILS.randomPosition(
-            CONFIG.BUGS.SIZE,
-            CONFIG.BUGS.SIZE,
-            CONFIG.WORLD.WIDTH - CONFIG.BUGS.SIZE,
-            CONFIG.WORLD.HEIGHT - CONFIG.BUGS.SIZE,
-            CONFIG.BUGS.SPAWN_MARGIN
-          );
-
-      // Check distance from player and collection bin
-      const playerDist = UTILS.distance(
-        pos.x,
-        pos.y,
-        Game.state.player.x,
-        Game.state.player.y
-      );
-      const binDist = UTILS.distance(
-        pos.x,
-        pos.y,
-        Game.state.collectionBin.x,
-        Game.state.collectionBin.y
+      // Add damage animation
+      this.jimImage.classList.add("damaged");
+      setTimeout(
+        () => this.jimImage.classList.remove("damaged"),
+        GAME_CONFIG.TIMINGS.DAMAGE_ANIMATION
       );
 
-      if (playerDist > 150 && binDist > 150) {
-        bug = {
-          type: typeIndex,
-          x: pos.x,
-          y: pos.y,
-          vx: (Math.random() - 0.5) * 2,
-          vy: (Math.random() - 0.5) * 2,
-          size: CONFIG.BUGS.SIZE,
-        };
-        validPosition = true;
-      }
-      attempts++;
-    }
-
-    if (bug) {
-      Game.state.bugs.push(bug);
-    }
-  },
-
-  // Spawn a monster of specific type
-  spawnMonster: (typeIndex) => {
-    const pos = UTILS.randomEdgePosition();
-
-    const monster = {
-      x: pos.x,
-      y: pos.y,
-      type: typeIndex,
-      size: CONFIG.MONSTERS.SIZE,
-      angle: Math.random() * Math.PI * 2,
-      speed: CONFIG.MONSTERS.SPEEDS[typeIndex],
-      huntPattern: CONFIG.MONSTERS.HUNT_PATTERNS[typeIndex],
-      alertLevel: 0,
-      lastSeenX: 0,
-      lastSeenY: 0,
-      wallCollisionCooldown: 0,
-      patrolTarget: { x: pos.x, y: pos.y },
-      aggressionLevel: 0,
-    };
-
-    Game.state.monsters.push(monster);
-    UTILS.playAudio(CONFIG.AUDIO.MONSTER_SPAWN, 0.4);
-  },
-
-  // Main game loop
-  gameLoop: () => {
-    if (Game.state.screen !== "game") return;
-
-    Game.updateGame();
-    Game.renderGame();
-    Game.updateUI();
-
-    Game.state.gameLoopId = requestAnimationFrame(Game.gameLoop);
-  },
-
-  // Start game loop
-  startGameLoop: () => {
-    if (Game.state.gameLoopId) {
-      cancelAnimationFrame(Game.state.gameLoopId);
-    }
-    Game.gameLoop();
-  },
-
-  // Update game state
-  updateGame: () => {
-    Game.updatePlayer();
-    Game.updateStamina();
-    Game.updateCamera();
-    Game.updateBugs();
-    Game.updateMonsters();
-
-    // Check bug collection
-    Game.checkBugCollection();
-
-    // Check bin deposit
-    Game.checkBinDeposit();
-
-    // Check monster collision
-    Game.checkMonsterCollision();
-
-    // Update particles
-    UTILS.updateParticles(Game.state.particles);
-  },
-
-  // Update player
-  updatePlayer: () => {
-    let dx = 0,
-      dy = 0;
-
-    // Store previous position for rolling calculation
-    Game.state.player.lastX = Game.state.player.x;
-    Game.state.player.lastY = Game.state.player.y;
-
-    // Movement controls
-    if (Game.keys["w"] || Game.keys["arrowup"]) dy = -1;
-    if (Game.keys["s"] || Game.keys["arrowdown"]) dy = 1;
-    if (Game.keys["a"] || Game.keys["arrowleft"]) dx = -1;
-    if (Game.keys["d"] || Game.keys["arrowright"]) dx = 1;
-
-    // Diagonal movement normalization
-    if (dx && dy) {
-      dx *= 0.707;
-      dy *= 0.707;
-    }
-
-    // Calculate speed based on stage and conditions
-    let currentSpeed = Game.state.player.speed;
-    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
-
-    // Apply sprint multiplier if sprinting
-    if (Game.state.isSprinting && stageConfig.canSprint) {
-      currentSpeed *= CONFIG.PLAYER.SPRINT_MULTIPLIER;
-    }
-
-    // Apply head speed reduction when carrying (stage 3 only)
-    if (Game.state.stage === 3 && Game.state.player.carrying.length > 0) {
-      currentSpeed *= CONFIG.PLAYER.HEAD_SPEED_MULTIPLIER;
-    }
-
-    // Apply movement
-    dx *= currentSpeed;
-    dy *= currentSpeed;
-
-    // Update position with world bounds
-    const newX = UTILS.clamp(
-      Game.state.player.x + dx,
-      Game.state.player.size,
-      CONFIG.WORLD.WIDTH - Game.state.player.size
-    );
-    const newY = UTILS.clamp(
-      Game.state.player.y + dy,
-      Game.state.player.size,
-      CONFIG.WORLD.HEIGHT - Game.state.player.size
-    );
-
-    Game.state.player.x = newX;
-    Game.state.player.y = newY;
-
-    // Update head rotation for stage 3 (rolling effect)
-    if (Game.state.stage === 3) {
-      const actualDx = Game.state.player.x - Game.state.player.lastX;
-      const actualDy = Game.state.player.y - Game.state.player.lastY;
-      const movement = Math.sqrt(actualDx ** 2 + actualDy ** 2);
-
-      if (movement > 0.1) {
-        // Only rotate if actually moving
-        // Calculate rotation based on movement distance
-        // The head rolls in the direction of movement
-        const rollAmount = movement * 0.02; // Adjust roll speed here
-        Game.state.player.rotation += rollAmount;
-
-        // Keep rotation within reasonable bounds (optional)
-        if (Game.state.player.rotation > Math.PI * 2) {
-          Game.state.player.rotation -= Math.PI * 2;
-        }
-      }
-    } else {
-      // Reset rotation for other stages
-      Game.state.player.rotation = 0;
-    }
-  },
-
-  // Update stamina system
-  updateStamina: () => {
-    // Drain stamina while sprinting (1 point every 3 seconds)
-    if (Game.state.isSprinting) {
-      Game.state.stamina -= 1 / CONFIG.STAMINA.DRAIN_PER_SECOND; // Convert to per-frame
-
-      // Stop sprinting if out of stamina
-      if (Game.state.stamina <= 0) {
-        Game.state.stamina = 0;
-        Game.stopSprinting();
-      }
-    }
-  },
-
-  // Update camera
-  updateCamera: () => {
-    const targetCameraX = Game.state.player.x - CONFIG.WORLD.CANVAS_WIDTH / 2;
-    const targetCameraY = Game.state.player.y - CONFIG.WORLD.CANVAS_HEIGHT / 2;
-
-    // Smooth camera following
-    Game.state.camera.x += (targetCameraX - Game.state.camera.x) * 0.1;
-    Game.state.camera.y += (targetCameraY - Game.state.camera.y) * 0.1;
-
-    // Clamp camera to world bounds
-    Game.state.camera.x = UTILS.clamp(
-      Game.state.camera.x,
-      0,
-      CONFIG.WORLD.WIDTH - CONFIG.WORLD.CANVAS_WIDTH
-    );
-    Game.state.camera.y = UTILS.clamp(
-      Game.state.camera.y,
-      0,
-      CONFIG.WORLD.HEIGHT - CONFIG.WORLD.CANVAS_HEIGHT
-    );
-  },
-
-  // Update bugs
-  updateBugs: () => {
-    Game.state.bugs.forEach((bug) => {
-      if (!bug) return;
-
-      // Random movement
-      bug.vx += (Math.random() - 0.5) * 0.5;
-      bug.vy += (Math.random() - 0.5) * 0.5;
-
-      // Limit speed
-      const speed = Math.sqrt(bug.vx ** 2 + bug.vy ** 2);
-      if (speed > CONFIG.BUGS.MAX_SPEED) {
-        bug.vx = (bug.vx / speed) * CONFIG.BUGS.MAX_SPEED;
-        bug.vy = (bug.vy / speed) * CONFIG.BUGS.MAX_SPEED;
+      // Cycle beetle dialogue during combat
+      if (this.currentJim >= 11 && this.currentJim <= 17) {
+        this.beetleClickCount++;
+        this.updateBeetleDialogue();
       }
 
-      // Update position
-      bug.x += bug.vx;
-      bug.y += bug.vy;
-
-      // Bounce off walls
-      if (bug.x < bug.size || bug.x > CONFIG.WORLD.WIDTH - bug.size) {
-        bug.vx *= -1;
-        bug.x = UTILS.clamp(bug.x, bug.size, CONFIG.WORLD.WIDTH - bug.size);
-      }
-      if (bug.y < bug.size || bug.y > CONFIG.WORLD.HEIGHT - bug.size) {
-        bug.vy *= -1;
-        bug.y = UTILS.clamp(bug.y, bug.size, CONFIG.WORLD.HEIGHT - bug.size);
-      }
-    });
-  },
-
-  // Update monsters with AI
-  updateMonsters: () => {
-    Game.state.monsters.forEach((monster) => {
-      // Decrease wall collision cooldown
-      if (monster.wallCollisionCooldown > 0) {
-        monster.wallCollisionCooldown--;
-      }
-
-      const playerDist = UTILS.distance(
-        monster.x,
-        monster.y,
-        Game.state.player.x,
-        Game.state.player.y
-      );
-
-      // Check if player is in vision cone
-      const canSeePlayer = UTILS.isInVisionCone(
-        monster.x,
-        monster.y,
-        monster.angle,
-        Game.state.player.x,
-        Game.state.player.y,
-        CONFIG.MONSTERS.VISION_RANGES[monster.type],
-        CONFIG.MONSTERS.CONE_ANGLES[monster.type]
-      );
-
-      if (canSeePlayer) {
-        monster.alertLevel = 1;
-        monster.lastSeenX = Game.state.player.x;
-        monster.lastSeenY = Game.state.player.y;
-      }
-
-      // Monster AI behavior
-      if (monster.alertLevel === 0) {
-        Game.handleMonsterSearchBehavior(monster);
-      } else {
-        Game.handleMonsterChaseBehavior(monster, playerDist, canSeePlayer);
-      }
-
-      // Check for wall collisions
-      Game.handleMonsterWallCollision(monster);
-
-      // Keep monsters in bounds
-      monster.x = UTILS.clamp(
-        monster.x,
-        monster.size,
-        CONFIG.WORLD.WIDTH - monster.size
-      );
-      monster.y = UTILS.clamp(
-        monster.y,
-        monster.size,
-        CONFIG.WORLD.HEIGHT - monster.size
-      );
-    });
-  },
-
-  // Handle monster search behavior
-  handleMonsterSearchBehavior: (monster) => {
-    switch (monster.huntPattern) {
-      case "aggressive":
-        monster.angle += (Math.random() - 0.5) * 0.3;
-        monster.x += Math.cos(monster.angle) * monster.speed;
-        monster.y += Math.sin(monster.angle) * monster.speed;
-        break;
-
-      case "stalker":
-        monster.angle += (Math.random() - 0.5) * 0.1;
-        monster.x += Math.cos(monster.angle) * monster.speed * 0.5;
-        monster.y += Math.sin(monster.angle) * monster.speed * 0.5;
-        break;
-
-      case "patrol":
-        const patrolDist = UTILS.distance(
-          monster.x,
-          monster.y,
-          monster.patrolTarget.x,
-          monster.patrolTarget.y
-        );
-        if (patrolDist < 50) {
-          monster.patrolTarget = UTILS.randomPosition(
-            monster.size,
-            monster.size,
-            CONFIG.WORLD.WIDTH - monster.size,
-            CONFIG.WORLD.HEIGHT - monster.size
-          );
-        }
-        const patrolAngle = Math.atan2(
-          monster.patrolTarget.y - monster.y,
-          monster.patrolTarget.x - monster.x
-        );
-        monster.angle = patrolAngle;
-        monster.x += Math.cos(monster.angle) * monster.speed * 0.7;
-        monster.y += Math.sin(monster.angle) * monster.speed * 0.7;
-        break;
-
-      default:
-        monster.angle += (Math.random() - 0.5) * 0.2;
-        monster.x += Math.cos(monster.angle) * monster.speed;
-        monster.y += Math.sin(monster.angle) * monster.speed;
-    }
-  },
-
-  // Handle monster chase behavior
-  handleMonsterChaseBehavior: (monster, playerDist, canSeePlayer) => {
-    const dx = Game.state.player.x - monster.x;
-    const dy = Game.state.player.y - monster.y;
-    const dist = Math.sqrt(dx ** 2 + dy ** 2);
-
-    if (dist > 0) {
-      let chaseSpeed = monster.speed * 1.5;
-      monster.x += (dx / dist) * chaseSpeed;
-      monster.y += (dy / dist) * chaseSpeed;
-      monster.angle = Math.atan2(dy, dx);
-    }
-
-    // Lose alert if too far and can't see player
-    if (playerDist > 400 && !canSeePlayer) {
-      monster.alertLevel = 0;
-    }
-  },
-
-  // Handle monster wall collision
-  handleMonsterWallCollision: (monster) => {
-    const margin = monster.size + 10;
-
-    if (monster.x < margin || monster.x > CONFIG.WORLD.WIDTH - margin) {
-      if (monster.wallCollisionCooldown === 0) {
-        monster.angle = Math.PI - monster.angle;
-        monster.wallCollisionCooldown = 30;
+      if (this.hp > 0) {
+        return; // Don't advance until HP is 0
       }
     }
 
-    if (monster.y < margin || monster.y > CONFIG.WORLD.HEIGHT - margin) {
-      if (monster.wallCollisionCooldown === 0) {
-        monster.angle = -monster.angle;
-        monster.wallCollisionCooldown = 30;
-      }
-    }
-  },
-
-  // Check bug collection
-  checkBugCollection: () => {
-    const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
-    if (Game.state.player.carrying.length >= stageConfig.maxCarrying) return;
-
-    for (let i = Game.state.bugs.length - 1; i >= 0; i--) {
-      const bug = Game.state.bugs[i];
-      if (!bug) continue;
-
-      const dist = UTILS.distance(
-        bug.x,
-        bug.y,
-        Game.state.player.x,
-        Game.state.player.y
-      );
-
-      if (dist < bug.size + Game.state.player.size) {
-        // Pick up bug
-        Game.state.player.carrying.push({
-          type: bug.type,
-          name: CONFIG.BUG_TYPES[bug.type].name,
-          points: CONFIG.BUG_TYPES[bug.type].points,
-        });
-
-        // Gain stamina
-        Game.state.stamina = Math.min(
-          CONFIG.STAMINA.MAX,
-          Game.state.stamina + CONFIG.STAMINA.GAIN_PER_BUG
-        );
-
-        // Create particle effect
-        const particles = UTILS.createParticles(bug.x, bug.y, "BUG_COLLECTION");
-        Game.state.particles.push(...particles);
-
-        // Remove bug from world
-        Game.state.bugs.splice(i, 1);
-
-        // Play collection sound
-        UTILS.playAudio(CONFIG.AUDIO.COLLECT_SOUND);
-
-        break; // Only collect one bug per frame
-      }
-    }
-  },
-
-  // Check bin deposit
-  checkBinDeposit: () => {
-    if (Game.state.player.carrying.length === 0) return;
-
-    const dist = UTILS.distance(
-      Game.state.collectionBin.x,
-      Game.state.collectionBin.y,
-      Game.state.player.x,
-      Game.state.player.y
-    );
-
-    if (dist < Game.state.collectionBin.size + Game.state.player.size) {
-      // Deposit all carried bugs
-      let totalPoints = 0;
-
-      Game.state.player.carrying.forEach((carriedBug) => {
-        totalPoints += carriedBug.points;
-
-        // Spawn new bug and monster at edge
-        Game.spawnBug(carriedBug.type, true);
-        Game.spawnMonster(carriedBug.type);
-      });
-
-      // Add points to current stage score
-      Game.state.score += totalPoints;
-      Game.state.stageScores[Game.state.stage - 1] += totalPoints;
-
-      // Create particle effect for points
-      const particles = UTILS.createParticles(
-        Game.state.collectionBin.x,
-        Game.state.collectionBin.y,
-        "POINTS_GAINED"
-      );
-      Game.state.particles.push(...particles);
-
-      // Clear carried bugs
-      Game.state.player.carrying = [];
-
-      // Play deposit sound
-      UTILS.playAudio(CONFIG.AUDIO.DEPOSIT_SOUND || CONFIG.AUDIO.UI_HOVER);
-    }
-  },
-
-  // Check monster collision
-  checkMonsterCollision: () => {
-    Game.state.monsters.forEach((monster) => {
-      const dist = UTILS.distance(
-        monster.x,
-        monster.y,
-        Game.state.player.x,
-        Game.state.player.y
-      );
-      if (dist < monster.size + Game.state.player.size) {
-        Game.handleStageEnd();
-      }
-    });
-  },
-
-  // Handle end of stage (monster collision)
-  handleStageEnd: () => {
-    if (Game.state.gameLoopId) {
-      cancelAnimationFrame(Game.state.gameLoopId);
-      Game.state.gameLoopId = null;
-    }
-
-    // Play death sound
-    UTILS.playAudio(CONFIG.AUDIO.DEATH_SOUND);
-
-    if (Game.state.stage < 3) {
-      // Move to next stage
-      Game.state.stage++;
-      Game.showStageTransition();
-    } else {
-      // Game over
-      Game.gameOver();
-    }
-  },
-
-  // Show stage transition popup
-  showStageTransition: () => {
-    Game.state.screen = "stage-transition";
-    Game.hideGameUI();
-
-    const container = document.getElementById("game-container");
-    let title, message, imagePath;
-
-    switch (Game.state.stage) {
-      case 2:
-        title = "You were mauled - but made it through!";
-        message =
-          "Your arms are gone, but you can still catch bugs! You can now only hold 1 bug at a time.";
-        imagePath = UTILS.getJimImagePath(2);
-        break;
-      case 3:
-        title = "You were mauled...again...";
-        message =
-          "Now you're just a head! You move slower when carrying bugs and can't sprint.";
-        imagePath = UTILS.getJimImagePath(3);
-        break;
-    }
-
-    container.innerHTML = `
-      <div class="popup-overlay">
-        <div class="stage-transition-popup">
-          <h2>${title}</h2>
-          <div class="jim-display">
-            <img src="${imagePath}" alt="Jim Stage ${Game.state.stage}" class="jim-image" />
-          </div>
-          <p>${message}</p>
-          <button id="continue-button" class="start-button">Continue Hunting!</button>
-        </div>
-      </div>
-    `;
-
-    // Attach event listener
-    const continueButton = document.getElementById("continue-button");
-    if (continueButton) {
-      continueButton.addEventListener("click", () => {
-        UTILS.playAudio(
-          CONFIG.AUDIO.STAGE_TRANSITION || CONFIG.AUDIO.COLLECT_SOUND
-        );
-        Game.continueToNextStage();
-      });
-    }
-  },
-
-  // Continue to next stage
-  continueToNextStage: () => {
-    // Clear the popup overlay completely
-    const container = document.getElementById("game-container");
-    container.innerHTML = ""; // This removes the popup
-
-    // Update canvas dimensions for current screen
-    UTILS.updateCanvasDimensions();
-    Game.setupCanvas();
-
-    // Reset player position and clear carrying
-    Game.state.player.x = CONFIG.PLAYER.START_X;
-    Game.state.player.y = CONFIG.PLAYER.START_Y;
-    Game.state.player.carrying = [];
-    Game.state.player.rotation = 0;
-    Game.state.player.lastX = CONFIG.PLAYER.START_X;
-    Game.state.player.lastY = CONFIG.PLAYER.START_Y;
-    Game.state.stamina = CONFIG.STAMINA.MAX;
-    Game.state.isSprinting = false;
-
-    // Clear monsters but keep bugs
-    Game.state.monsters = [];
-
-    // Show game UI and restart loop
-    Game.state.screen = "game";
-    Game.showGameUI();
-    Game.startGameLoop();
-  },
-
-  // Game over
-  gameOver: () => {
-    Game.state.screen = "game-over";
-    Game.hideGameUI();
-    EndingScreen.init(Game.state);
-  },
-
-  // Render game
-  renderGame: () => {
-    const canvas = document.getElementById("gameCanvas");
-    if (!canvas) return;
-
-    const ctx = canvas.getContext("2d");
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Set up rendering
-    Game.renderWorld(ctx);
-    Game.renderEntities(ctx);
-
-    // Render particles
-    UTILS.renderParticles(
-      ctx,
-      Game.state.particles,
-      Game.state.camera.x,
-      Game.state.camera.y
-    );
-  },
-
-  // Render world
-  renderWorld: (ctx) => {
-    // Background gradient
-    const gradient = ctx.createRadialGradient(
-      CONFIG.WORLD.CANVAS_WIDTH / 2,
-      CONFIG.WORLD.CANVAS_HEIGHT / 2,
-      0,
-      CONFIG.WORLD.CANVAS_WIDTH / 2,
-      CONFIG.WORLD.CANVAS_HEIGHT / 2,
-      Math.max(CONFIG.WORLD.CANVAS_WIDTH, CONFIG.WORLD.CANVAS_HEIGHT)
-    );
-
-    gradient.addColorStop(0, "#87CEEB");
-    gradient.addColorStop(1, "#4a90e2");
-
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, CONFIG.WORLD.CANVAS_WIDTH, CONFIG.WORLD.CANVAS_HEIGHT);
-
-    // World bounds
-    ctx.strokeStyle = "#2c3e50";
-    ctx.lineWidth = 3;
-    ctx.strokeRect(
-      -Game.state.camera.x,
-      -Game.state.camera.y,
-      CONFIG.WORLD.WIDTH,
-      CONFIG.WORLD.HEIGHT
-    );
-  },
-
-  // Render entities
-  renderEntities: (ctx) => {
-    // Collection bin
-    Game.renderCollectionBin(ctx);
-
-    // Bugs
-    Game.renderBugs(ctx);
-
-    // Monsters
-    Game.renderMonsters(ctx);
-
-    // Player
-    Game.renderPlayer(ctx);
-  },
-
-  // Render collection bin
-  renderCollectionBin: (ctx) => {
-    const binX = Game.state.collectionBin.x - Game.state.camera.x;
-    const binY = Game.state.collectionBin.y - Game.state.camera.y;
-
-    // Bin image or emoji
-    UTILS.drawImageOrEmoji(
-      ctx,
-      "collection_bin",
-      "🗑️",
-      binX,
-      binY,
-      Game.state.collectionBin.size,
-      Game.state.collectionBin.size
-    );
-  },
-
-  // Render bugs (no circles)
-  renderBugs: (ctx) => {
-    Game.state.bugs.forEach((bug) => {
-      if (!bug) return;
-
-      const x = bug.x - Game.state.camera.x;
-      const y = bug.y - Game.state.camera.y;
-
-      // Skip if off-screen
-      if (
-        x < -100 ||
-        x > CONFIG.WORLD.CANVAS_WIDTH + 100 ||
-        y < -100 ||
-        y > CONFIG.WORLD.CANVAS_HEIGHT + 100
-      )
+    if (this.currentJim >= 19 && this.currentJim <= 22) {
+      // Hopping Jims need 2 clicks
+      if (this.currentClicks < 2) {
+        this.moveAwayFromCursor(e);
         return;
-
-      // Bug image or emoji (no background circle)
-      const imageKey = `bug_${CONFIG.BUG_TYPES[bug.type].image}`;
-      const emoji = CONFIG.BUG_TYPES[bug.type].symbol;
-      UTILS.drawImageOrEmoji(
-        ctx,
-        imageKey,
-        emoji,
-        x,
-        y,
-        bug.size * 1.6,
-        bug.size * 1.6
-      );
-    });
-  },
-
-  // Render monsters
-  renderMonsters: (ctx) => {
-    Game.state.monsters.forEach((monster) => {
-      const x = monster.x - Game.state.camera.x;
-      const y = monster.y - Game.state.camera.y;
-
-      // Skip if off-screen
-      if (
-        x < -200 ||
-        x > CONFIG.WORLD.CANVAS_WIDTH + 200 ||
-        y < -200 ||
-        y > CONFIG.WORLD.CANVAS_HEIGHT + 200
-      )
-        return;
-
-      // Vision cone
-      const range = CONFIG.MONSTERS.VISION_RANGES[monster.type];
-      const coneAngle = CONFIG.MONSTERS.CONE_ANGLES[monster.type];
-
-      ctx.fillStyle =
-        monster.alertLevel === 1
-          ? "rgba(255, 0, 0, 0.3)"
-          : "rgba(255, 255, 100, 0.15)";
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.arc(
-        x,
-        y,
-        range,
-        monster.angle - coneAngle,
-        monster.angle + coneAngle
-      );
-      ctx.closePath();
-      ctx.fill();
-
-      // Monster image
-      const monsterImageKeys = [
-        "firefly_monster",
-        "beetle_monster",
-        "butterfly_monster",
-        "ladybug_monster",
-        "grasshopper_monster",
-        "dragonfly_monster",
-      ];
-
-      const monsterEmojis = ["🔥", "🪲", "🦇", "🔴", "🦂", "🐉"];
-
-      const imageKey = monsterImageKeys[monster.type] || "monster";
-      const emoji = monsterEmojis[monster.type] || "👹";
-
-      UTILS.drawImageOrEmoji(
-        ctx,
-        imageKey,
-        emoji,
-        x,
-        y,
-        monster.size * 1.6,
-        monster.size * 1.6
-      );
-    });
-  },
-
-  // Render player (no circle)
-  renderPlayer: (ctx) => {
-    const playerX = Game.state.player.x - Game.state.camera.x;
-    const playerY = Game.state.player.y - Game.state.camera.y;
-
-    // Player image based on stage
-    const imageKeys = ["", "jim_happy", "jim_armless", "jim_head_happy"];
-    const imageKey = imageKeys[Game.state.stage];
-    const emoji = "👨";
-
-    // Save context for rotation
-    ctx.save();
-
-    // Apply rotation for stage 3 (head rolling)
-    if (Game.state.stage === 3) {
-      ctx.translate(playerX, playerY);
-      ctx.rotate(Game.state.player.rotation);
-
-      UTILS.drawImageOrEmoji(
-        ctx,
-        imageKey,
-        emoji,
-        0, // Draw at origin since we translated
-        0,
-        Game.state.player.size * 1.6,
-        Game.state.player.size * 1.6
-      );
-    } else {
-      // Normal rendering for stages 1 and 2
-      UTILS.drawImageOrEmoji(
-        ctx,
-        imageKey,
-        emoji,
-        playerX,
-        playerY,
-        Game.state.player.size * 1.6,
-        Game.state.player.size * 1.6
-      );
-    }
-
-    // Restore context
-    ctx.restore();
-
-    // Carried bugs above player (not affected by rotation)
-    Game.state.player.carrying.forEach((carriedBug, index) => {
-      const bugX = playerX + (index - 1) * 25;
-      const bugY = playerY - 50;
-
-      const imageKey = `bug_${CONFIG.BUG_TYPES[carriedBug.type].image}`;
-      const emoji = CONFIG.BUG_TYPES[carriedBug.type].symbol;
-      UTILS.drawImageOrEmoji(ctx, imageKey, emoji, bugX, bugY, 24, 24);
-    });
-  },
-
-  // Update UI
-  updateUI: () => {
-    // Update score
-    const scoreDisplay = document.getElementById("score-display");
-    if (scoreDisplay) scoreDisplay.textContent = Game.state.score;
-
-    // Update stage
-    const stageDisplay = document.getElementById("stage-display");
-    if (stageDisplay) stageDisplay.textContent = Game.state.stage;
-
-    // Update coordinates
-    const coordinatesDisplay = document.getElementById("coordinates-display");
-    if (coordinatesDisplay) {
-      const coords = UTILS.worldToDisplayCoords(
-        Game.state.player.x,
-        Game.state.player.y
-      );
-      coordinatesDisplay.textContent = `(${coords.x}, ${coords.y})`;
-    }
-
-    // Update carrying count
-    const carryingDisplay = document.getElementById("carrying-display");
-    if (carryingDisplay) {
-      const stageConfig = CONFIG.STAGES[`STAGE_${Game.state.stage}`];
-      carryingDisplay.textContent = `${Game.state.player.carrying.length}/${stageConfig.maxCarrying}`;
-    }
-
-    // Update stamina bar
-    const staminaBarFill = document.getElementById("stamina-bar-fill");
-    if (staminaBarFill) {
-      const percent = (Game.state.stamina / CONFIG.STAMINA.MAX) * 100;
-      staminaBarFill.style.width = percent + "%";
-      staminaBarFill.className = Game.state.isSprinting
-        ? "stamina-bar-fill sprinting"
-        : "stamina-bar-fill";
-    }
-  },
-
-  // Show game UI
-  showGameUI: () => {
-    const gameUI = document.getElementById("game-ui");
-    const canvas = document.getElementById("gameCanvas");
-
-    if (gameUI) gameUI.style.display = "block";
-    if (canvas) canvas.style.display = "block";
-  },
-
-  // Hide game UI
-  hideGameUI: () => {
-    const gameUI = document.getElementById("game-ui");
-    const canvas = document.getElementById("gameCanvas");
-
-    if (gameUI) gameUI.style.display = "none";
-    if (canvas) canvas.style.display = "none";
-  },
-};
-
-// Initialize game when DOM is loaded
-document.addEventListener("DOMContentLoaded", () => {
-  Game.init();
-});
-
-// Handle page visibility changes to pause/resume music
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) {
-    // Pause music
-    const audio = document.getElementById(CONFIG.AUDIO.BACKGROUND_MUSIC);
-    if (audio && !audio.paused) {
-      audio.pause();
-    }
-  } else {
-    // Resume music if game is running
-    if (Game.state && Game.state.screen === "game") {
-      const audio = document.getElementById(CONFIG.AUDIO.BACKGROUND_MUSIC);
-      if (audio) {
-        audio.play().catch((e) => console.log("Music resume failed:", e));
       }
+    }
+
+    // Advance to next Jim
+    this.currentClicks = 0;
+    this.beetleClickCount = 0; // Reset beetle click counter
+    this.currentJim++;
+
+    if (this.currentJim > this.maxJim) {
+      this.startParticleShow();
+      return;
+    }
+
+    // Special handling for new phases
+    if (this.currentJim === 23) {
+      this.startMinionPhase();
+      return;
+    } else if (this.currentJim === 24) {
+      // Skip the broken "Find Still Jim" phase - go directly to fusion phase
+      this.currentJim = 25;
+      this.updateDisplay();
+      this.updateProgressBar();
+      return;
+    } else if (this.currentJim === 28) {
+      this.startGoldPhase();
+      return;
+    } else if (this.currentJim === 29) {
+      this.startFinishButtonPhase();
+      return;
+    } else if (this.currentJim === 30) {
+      this.startLoseButtonPhase();
+      return;
+    } else if (this.currentJim === 31) {
+      // Brief pause, then advance to cup game
+      setTimeout(() => {
+        this.currentJim = 32;
+        this.updateDisplay();
+        this.updateProgressBar();
+      }, 2000);
+      return;
+    } else if (this.currentJim === 32) {
+      this.startCupGame();
+      return;
+    }
+
+    this.updateDisplay();
+    this.updateProgressBar();
+  }
+
+  updateDisplay() {
+    // Handle image loading - use actual jim number for fusion images, otherwise cap at 22
+    let jimImageNumber;
+    if (GAME_CONFIG.FUSION_IMAGES.includes(this.currentJim)) {
+      jimImageNumber = this.currentJim; // Use jim25.png, jim26.png, jim27.png
+    } else {
+      jimImageNumber = Math.min(this.currentJim, GAME_CONFIG.MAX_JIM_IMAGES); // Cap at jim22.png
+    }
+
+    this.jimImage.src = `jim${jimImageNumber}.png`;
+    this.dialogueText.textContent = DIALOGUES[this.currentJim] || "...";
+
+    // Add dialogue animation
+    this.dialogueBox.style.animation = "dialoguePulse 0.5s ease-out";
+
+    // Reset positioning and movement
+    this.stopMovement();
+    this.jimImage.style.position = "static";
+    this.jimImage.className = "jim-image"; // Reset classes
+
+    // CRITICAL FIX: Ensure Jim image is visible by removing any display override
+    this.jimImage.style.display = "";
+
+    // Re-enable Jim clicking EXCEPT during button phases (29-31)
+    if (this.currentJim < 29 || this.currentJim > 31) {
+      this.jimImage.style.pointerEvents = "auto";
+    }
+
+    // Add personality-based animations
+    this.addPersonalityAnimation();
+
+    // HP system for beetles (11-17), moth (18), and fusion phases (25-27)
+    if (
+      (this.currentJim >= 11 && this.currentJim <= 18) ||
+      (this.currentJim >= 25 && this.currentJim <= 27)
+    ) {
+      this.setupHPSystem();
+      // Fade out progress bar when entering beetle mode
+      if (this.currentJim === 11) {
+        this.progressBar.classList.add("fade-out");
+      }
+    } else {
+      this.hpContainer.style.display = "none";
+    }
+
+    // Special behaviors
+    if (this.currentJim === 18) {
+      this.startFlyingBehavior();
+    } else if (this.currentJim >= 19 && this.currentJim <= 22) {
+      this.startHoppingBehavior();
+    } else if (this.currentJim === 25) {
+      this.startBeetleMothBehavior();
+    } else if (this.currentJim === 26) {
+      this.startChickenBeetleBehavior();
+    } else if (this.currentJim === 27) {
+      this.startGhostChickenBehavior();
     }
   }
+
+  updateBeetleDialogue() {
+    if (BEETLE_TAUNTS[this.currentJim]) {
+      const taunts = BEETLE_TAUNTS[this.currentJim];
+      const tauntIndex = (this.beetleClickCount - 1) % taunts.length;
+      this.dialogueText.textContent = taunts[tauntIndex];
+      this.dialogueBox.style.animation = "dialoguePulse 0.5s ease-out";
+    }
+  }
+
+  addPersonalityAnimation() {
+    if (this.currentJim === 1) {
+      this.jimImage.classList.add("happy-jim");
+    } else if (this.currentJim === 2) {
+      this.jimImage.classList.add("scared-jim");
+    } else if (this.currentJim >= 6 && this.currentJim <= 7) {
+      this.jimImage.classList.add("invincible-jim");
+    } else if (this.currentJim === 8) {
+      this.jimImage.classList.add("dead-jim");
+    } else if (this.currentJim >= 11 && this.currentJim <= 17) {
+      this.jimImage.classList.add("beetle-jim");
+    }
+  }
+
+  setupHPSystem() {
+    if (this.currentJim >= 11 && this.currentJim <= 17) {
+      // Beetles: HP increases by 1 each time, starting at 2
+      this.maxHp =
+        GAME_CONFIG.HP_CONFIG.BEETLE_BASE_HP + (this.currentJim - 11);
+    } else if (this.currentJim === 18) {
+      // Moth: 6 HP
+      this.maxHp = GAME_CONFIG.HP_CONFIG.MOTH_HP;
+    } else if (this.currentJim === 25) {
+      // Beetle-Moth fusion: 8 HP
+      this.maxHp = GAME_CONFIG.HP_CONFIG.BEETLE_MOTH_HP;
+    } else if (this.currentJim === 26) {
+      // Chicken-Beetle fusion: 6 HP
+      this.maxHp = GAME_CONFIG.HP_CONFIG.CHICKEN_BEETLE_HP;
+    } else if (this.currentJim === 27) {
+      // Ghost-Chicken fusion: 4 HP
+      this.maxHp = GAME_CONFIG.HP_CONFIG.GHOST_CHICKEN_HP;
+    }
+
+    this.hp = this.maxHp;
+    this.hpContainer.style.display = "block";
+    this.hpContainer.style.animation = "hpBarSlideIn 0.5s ease-out";
+    this.updateHPBar();
+  }
+
+  updateHPBar() {
+    const percentage = (this.hp / this.maxHp) * 100;
+    this.hpFill.style.width = percentage + "%";
+    this.hpText.textContent = `❤️ ${this.hp} / ${this.maxHp} HP`;
+
+    // Add critical health effects
+    if (percentage <= 25) {
+      this.hpFill.classList.add("critical");
+      if (this.currentJim >= 11 && this.currentJim <= 17) {
+        this.jimImage.classList.add("low-health");
+      }
+    } else {
+      this.hpFill.classList.remove("critical");
+      this.jimImage.classList.remove("low-health");
+    }
+  }
+
+  updateProgressBar() {
+    const percentage = (this.currentJim / this.maxJim) * 100;
+    this.progressFill.style.width = percentage + "%";
+  }
+
+  updateComboCounter() {
+    if (this.comboCount > 1) {
+      this.comboCounter.textContent = `${this.comboCount}x COMBO!`;
+      this.comboCounter.style.display = "block";
+      this.comboCounter.style.animation = "comboPulse 0.5s ease-out";
+
+      setTimeout(() => {
+        if (Date.now() - this.lastClickTime > 2000) {
+          this.comboCounter.style.display = "none";
+          this.comboCount = 0;
+        }
+      }, 2000);
+    }
+  }
+
+  addClickEffect(e) {
+    const effect = document.createElement("div");
+    effect.classList.add("click-effect");
+    effect.textContent =
+      CLICK_PHRASES[Math.floor(Math.random() * CLICK_PHRASES.length)];
+
+    const rect = this.jimImage.getBoundingClientRect();
+    effect.style.left = rect.left + Math.random() * rect.width + "px";
+    effect.style.top = rect.top + Math.random() * rect.height + "px";
+    effect.style.color = `hsl(${Math.random() * 360}, 100%, 70%)`;
+
+    document.body.appendChild(effect);
+    setTimeout(() => effect.remove(), 1000);
+  }
+
+  screenShake() {
+    this.gameContainer.classList.add("screen-shake");
+    setTimeout(
+      () => this.gameContainer.classList.remove("screen-shake"),
+      GAME_CONFIG.TIMINGS.SCREEN_SHAKE
+    );
+  }
+
+  createSparkle(rect) {
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => {
+        const sparkle = document.createElement("div");
+        sparkle.style.position = "absolute";
+        sparkle.style.left = rect.left + Math.random() * rect.width + "px";
+        sparkle.style.top = rect.top + Math.random() * rect.height + "px";
+        sparkle.style.width = "4px";
+        sparkle.style.height = "4px";
+        sparkle.style.background = "#ffff00";
+        sparkle.style.borderRadius = "50%";
+        sparkle.style.pointerEvents = "none";
+        sparkle.style.animation = "clickEffectFloat 1s ease-out forwards";
+        sparkle.style.zIndex = "100";
+
+        document.body.appendChild(sparkle);
+        setTimeout(() => sparkle.remove(), 1000);
+      }, i * 100);
+    }
+  }
+
+  startFlyingBehavior() {
+    this.jimImage.classList.add("flying-jim");
+    this.jimImage.style.position = "absolute";
+
+    // Center Jim initially when switching to absolute positioning
+    const jimRect = this.jimImage.getBoundingClientRect();
+    const jimWidth = jimRect.width;
+    const jimHeight = jimRect.height;
+
+    // Center Jim on screen
+    const centerX = (window.innerWidth - jimWidth) / 2;
+    const centerY = (window.innerHeight - jimHeight) / 2;
+
+    this.jimImage.style.left = centerX + "px";
+    this.jimImage.style.top = centerY + "px";
+
+    this.isMoving = true;
+
+    this.moveInterval = setInterval(() => {
+      const randomX = Math.random() * (window.innerWidth - jimWidth);
+      const randomY = Math.random() * (window.innerHeight - jimHeight);
+
+      const boundedPos = this.keepWithinBounds(
+        randomX,
+        randomY,
+        jimWidth,
+        jimHeight
+      );
+
+      this.jimImage.style.left = boundedPos.x + "px";
+      this.jimImage.style.top = boundedPos.y + "px";
+
+      this.createFlutterTrail(boundedPos.x, boundedPos.y);
+    }, GAME_CONFIG.TIMINGS.FLYING_MOVEMENT);
+  }
+
+  createFlutterTrail(x, y) {
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => {
+        const trail = document.createElement("div");
+        trail.style.position = "absolute";
+        trail.style.left = x + Math.random() * 50 + "px";
+        trail.style.top = y + Math.random() * 50 + "px";
+        trail.style.width = "6px";
+        trail.style.height = "6px";
+        trail.style.background = "rgba(255, 255, 255, 0.6)";
+        trail.style.borderRadius = "50%";
+        trail.style.pointerEvents = "none";
+        trail.style.animation = "clickEffectFloat 0.8s ease-out forwards";
+
+        document.body.appendChild(trail);
+        setTimeout(() => trail.remove(), 800);
+      }, i * GAME_CONFIG.TIMINGS.MOTH_FLUTTER_INTERVAL);
+    }
+  }
+
+  startHoppingBehavior() {
+    this.jimImage.classList.add("hopping-jim");
+    this.jimImage.style.position = "absolute";
+
+    this.chickenDirection = Math.random() < 0.5 ? 1 : -1;
+    this.chickenPosition = 0;
+    this.chickenSpeed = GAME_CONFIG.TIMINGS.CHICKEN_SPEED;
+
+    this.positionChickenOnEdge();
+    this.startChickenRunning();
+  }
+
+  positionChickenOnEdge() {
+    const margin = 20;
+    const jimWidth = GAME_CONFIG.UI.JIM_MAX_WIDTH;
+    const jimHeight = jimWidth * 0.75;
+
+    const screenWidth = window.innerWidth - margin * 2 - jimWidth;
+    const screenHeight = window.innerHeight - margin * 2 - jimHeight;
+    const perimeter = (screenWidth + screenHeight) * 2;
+    const bumppx = window.innerWidth * 0.3;
+    const bumppy = window.innerHeight * 0.3;
+
+    const distanceAlongPerimeter = this.chickenPosition * perimeter;
+    let x, y;
+
+    if (distanceAlongPerimeter <= screenWidth) {
+      x = margin + distanceAlongPerimeter;
+      y = margin;
+    } else if (distanceAlongPerimeter <= screenWidth + screenHeight) {
+      x = margin + screenWidth;
+      y = margin + (distanceAlongPerimeter - screenWidth);
+    } else if (distanceAlongPerimeter <= screenWidth * 2 + screenHeight) {
+      x =
+        margin +
+        screenWidth -
+        (distanceAlongPerimeter - screenWidth - screenHeight);
+      y = margin + screenHeight;
+    } else {
+      x = margin;
+      y =
+        margin +
+        screenHeight -
+        (distanceAlongPerimeter - screenWidth * 2 - screenHeight);
+    }
+
+    this.jimImage.style.left = x - bumppx + "px";
+    this.jimImage.style.top = y - bumppy + "px";
+  }
+
+  startChickenRunning() {
+    this.isMoving = true;
+
+    this.moveInterval = setInterval(() => {
+      this.chickenPosition += this.chickenSpeed * this.chickenDirection;
+
+      if (this.chickenPosition < 0) {
+        this.chickenPosition = 1;
+      } else if (this.chickenPosition > 1) {
+        this.chickenPosition = 0;
+      }
+
+      this.positionChickenOnEdge();
+    }, 16); // ~60fps
+  }
+
+  moveAwayFromCursor(e) {
+    this.chickenDirection *= -1;
+    const rect = this.jimImage.getBoundingClientRect();
+    this.createEscapeDust(rect.left, rect.top);
+  }
+
+  createEscapeDust(x, y) {
+    for (let i = 0; i < 5; i++) {
+      const dust = document.createElement("div");
+      dust.style.position = "absolute";
+      dust.style.left = x + Math.random() * 100 + "px";
+      dust.style.top = y + Math.random() * 100 + "px";
+      dust.style.width = "8px";
+      dust.style.height = "8px";
+      dust.style.background = "rgba(255, 255, 255, 0.4)";
+      dust.style.borderRadius = "50%";
+      dust.style.pointerEvents = "none";
+      dust.style.animation = "clickEffectFloat 1.2s ease-out forwards";
+
+      document.body.appendChild(dust);
+      setTimeout(() => dust.remove(), 1200);
+    }
+  }
+
+  handleMouseMove(e) {
+    // Mouse move handling if needed for specific phases
+  }
+
+  stopMovement() {
+    this.isMoving = false;
+    if (this.moveInterval) {
+      clearInterval(this.moveInterval);
+      this.moveInterval = null;
+    }
+    // Reset opacity for ghost chicken phase
+    this.jimImage.style.opacity = "1";
+  }
+
+  startParticleShow() {
+    this.dialogueText.textContent = "🎉 ULTIMATE PARTICLE EXPLOSION! 🎉";
+    this.jimImage.style.display = "none";
+    this.hpContainer.style.display = "none";
+    this.comboCounter.style.display = "none";
+
+    const finishBtn = document.getElementById("finish-btn");
+    const goldCounter = document.getElementById("gold-counter");
+    if (finishBtn) finishBtn.remove();
+    if (goldCounter) goldCounter.remove();
+
+    this.gameContainer.classList.add("screen-shake");
+
+    const particleCount = 500;
+    const duration = GAME_CONFIG.TIMINGS.PARTICLE_SHOW_DURATION;
+
+    for (let i = 0; i < particleCount; i++) {
+      setTimeout(() => {
+        this.createParticle();
+      }, Math.random() * duration);
+    }
+
+    for (let i = 0; i < 20; i++) {
+      setTimeout(() => {
+        this.createFireworkBurst();
+      }, Math.random() * duration);
+    }
+
+    setTimeout(() => {
+      this.resetGame();
+    }, duration);
+  }
+
+  startMinionPhase() {
+    this.jimImage.style.display = "none";
+    this.hpContainer.style.display = "none";
+    this.minions = [];
+    this.defeatedMinions = 0;
+
+    for (let i = 0; i < GAME_CONFIG.UI.MINION_COUNT; i++) {
+      const minion = document.createElement("img");
+      minion.src = Math.random() > 0.5 ? "thumbs.png" : "hand.png";
+      minion.style.position = "absolute";
+      minion.style.width = "80px";
+      minion.style.height = "80px";
+      minion.style.cursor = "pointer";
+      minion.style.transition = "all 0.3s ease";
+      minion.style.userSelect = "none";
+      minion.draggable = false;
+
+      // Use jim images 1-22 only
+      minion.dataset.jimFrame = (i % GAME_CONFIG.MAX_JIM_IMAGES) + 1;
+
+      const x = Math.random() * (window.innerWidth - 80);
+      const y = Math.random() * (window.innerHeight - 80);
+      minion.style.left = x + "px";
+      minion.style.top = y + "px";
+
+      minion.addEventListener("mousedown", (e) =>
+        this.handleMinionClick(e, minion)
+      );
+
+      minion.style.animation = `mothFlutter ${
+        1 + Math.random()
+      }s infinite ease-in-out`;
+
+      this.gameContainer.appendChild(minion);
+      this.minions.push(minion);
+    }
+  }
+
+  handleMinionClick(e, minion) {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const jimFrame = minion.dataset.jimFrame;
+    minion.src = `jim${jimFrame}.png`;
+    minion.style.width = "60px";
+    minion.style.height = "60px";
+    minion.style.pointerEvents = "none";
+    minion.style.animation = "clickPulse 0.5s ease-out";
+
+    this.defeatedMinions++;
+
+    if (this.defeatedMinions >= GAME_CONFIG.UI.MINION_COUNT) {
+      setTimeout(() => {
+        this.currentJim = 25; // Skip directly to fusion phase
+        this.cleanupMinions();
+        this.updateDisplay();
+      }, 1000);
+    }
+  }
+
+  cleanupMinions() {
+    this.minions.forEach((minion) => minion.remove());
+    this.minions = [];
+  }
+
+  startFindStillJim() {
+    this.jimImage.style.display = "none";
+    this.minions = [];
+
+    const stillJimIndex = Math.floor(
+      Math.random() * GAME_CONFIG.UI.STILL_JIM_COUNT
+    );
+
+    for (let i = 0; i < GAME_CONFIG.UI.STILL_JIM_COUNT; i++) {
+      const jimCopy = document.createElement("img");
+      // Use jim images 1-22 only
+      const jimImageNumber = (i % GAME_CONFIG.MAX_JIM_IMAGES) + 1;
+      jimCopy.src = `jim${jimImageNumber}.png`;
+      jimCopy.style.position = "absolute";
+      jimCopy.style.width = "80px";
+      jimCopy.style.height = "80px";
+      jimCopy.style.cursor = "pointer";
+      jimCopy.style.userSelect = "none";
+      jimCopy.draggable = false;
+
+      const x = Math.random() * (window.innerWidth - 80);
+      const y = Math.random() * (window.innerHeight - 80);
+      jimCopy.style.left = x + "px";
+      jimCopy.style.top = y + "px";
+
+      if (i !== stillJimIndex) {
+        jimCopy.style.animation = "scaredShiver 0.2s infinite ease-in-out";
+      }
+
+      jimCopy.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (i === stillJimIndex) {
+          this.cleanupMinions();
+          this.currentJim = 25;
+          this.updateDisplay();
+        } else {
+          this.cleanupMinions();
+          this.startFindStillJim();
+        }
+      });
+
+      this.gameContainer.appendChild(jimCopy);
+      this.minions.push(jimCopy);
+    }
+  }
+
+  startBeetleMothBehavior() {
+    this.jimImage.classList.add("beetle-jim", "flying-jim");
+    this.jimImage.style.position = "absolute";
+    this.startFlyingBehavior();
+  }
+
+  startChickenBeetleBehavior() {
+    this.jimImage.classList.add("beetle-jim", "hopping-jim");
+    this.jimImage.style.position = "absolute";
+    this.startHoppingBehavior();
+  }
+
+  startGhostChickenBehavior() {
+    this.jimImage.classList.add("hopping-jim");
+    this.jimImage.style.position = "absolute";
+
+    // Phase in/out behavior
+    this.isMoving = true;
+    this.moveInterval = setInterval(() => {
+      this.jimImage.style.opacity =
+        this.jimImage.style.opacity === "0.3" ? "1" : "0.3";
+    }, 800);
+
+    this.startHoppingBehavior();
+  }
+
+  startGoldPhase() {
+    this.createGoldCounter();
+    this.currentJim = 29;
+    this.updateDisplay();
+    this.updateProgressBar();
+  }
+
+  createGoldCounter() {
+    const goldCounter = document.createElement("div");
+    goldCounter.id = "gold-counter";
+    goldCounter.style.position = "fixed";
+    goldCounter.style.top = "80px";
+    goldCounter.style.right = "30px";
+    goldCounter.style.fontSize = "1.5em";
+    goldCounter.style.fontWeight = "bold";
+    goldCounter.style.color = "#FFD700";
+    goldCounter.style.textShadow = "2px 2px 4px rgba(0, 0, 0, 0.8)";
+    goldCounter.textContent = `💰 Gold: ${this.goldEarned}/${GAME_CONFIG.UI.GOLD_TARGET}`;
+    document.body.appendChild(goldCounter);
+
+    const goldInterval = setInterval(() => {
+      this.goldEarned++;
+      goldCounter.textContent = `💰 Gold: ${this.goldEarned}/${GAME_CONFIG.UI.GOLD_TARGET}`;
+
+      if (this.goldEarned >= GAME_CONFIG.UI.GOLD_TARGET) {
+        clearInterval(goldInterval);
+        goldCounter.style.transition = "opacity 2s ease-out";
+        goldCounter.style.opacity = "0";
+        setTimeout(() => goldCounter.remove(), 2000);
+      }
+    }, 1000);
+  }
+
+  startFinishButtonPhase() {
+    // Jim should be visible but not clickable during button phases
+    this.jimImage.style.pointerEvents = "none";
+
+    const finishBtn = document.createElement("button");
+    finishBtn.id = "finish-btn";
+    finishBtn.textContent = "FINISH GAME";
+    finishBtn.style.position = "fixed";
+    finishBtn.style.bottom = "50px";
+    finishBtn.style.left = "50%";
+    finishBtn.style.transform = "translateX(-50%)";
+    finishBtn.style.padding = "15px 30px";
+    finishBtn.style.fontSize = "1.3em";
+    finishBtn.style.fontWeight = "bold";
+    finishBtn.style.background = "linear-gradient(135deg, #ff6b6b, #ee5a24)";
+    finishBtn.style.color = "white";
+    finishBtn.style.border = "none";
+    finishBtn.style.borderRadius = "10px";
+    finishBtn.style.cursor = "pointer";
+    finishBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
+    finishBtn.style.zIndex = "1000";
+
+    finishBtn.addEventListener("click", () => {
+      finishBtn.remove();
+      this.currentJim = 30;
+      this.updateDisplay();
+      this.updateProgressBar();
+    });
+
+    document.body.appendChild(finishBtn);
+  }
+
+  startLoseButtonPhase() {
+    // Jim should be visible but not clickable during button phases
+    this.jimImage.style.pointerEvents = "none";
+
+    const loseBtn = document.createElement("button");
+    loseBtn.id = "lose-btn";
+    loseBtn.textContent = "LOSE";
+    loseBtn.style.position = "fixed";
+    loseBtn.style.bottom = "50px";
+    loseBtn.style.left = "50%";
+    loseBtn.style.transform = "translateX(-50%)";
+    loseBtn.style.padding = "15px 30px";
+    loseBtn.style.fontSize = "1.3em";
+    loseBtn.style.fontWeight = "bold";
+    loseBtn.style.background = "linear-gradient(135deg, #666, #333)";
+    loseBtn.style.color = "white";
+    loseBtn.style.border = "none";
+    loseBtn.style.borderRadius = "10px";
+    loseBtn.style.cursor = "pointer";
+    loseBtn.style.boxShadow = "0 5px 15px rgba(0, 0, 0, 0.3)";
+    loseBtn.style.zIndex = "1000";
+
+    loseBtn.addEventListener("click", () => {
+      loseBtn.remove();
+      this.currentJim = 31;
+      this.updateDisplay();
+      this.updateProgressBar();
+    });
+
+    document.body.appendChild(loseBtn);
+  }
+
+  startCupGame() {
+    // Hide Jim initially
+    this.jimImage.style.display = "none";
+
+    // Re-enable Jim clicking for after cup game
+    this.jimImage.style.pointerEvents = "auto";
+
+    this.cupGame.gameActive = false; // Start with cups non-clickable
+    this.cupGame.cups = [];
+
+    // Create 3 cups
+    for (let i = 0; i < GAME_CONFIG.UI.CUP_COUNT; i++) {
+      const cup = document.createElement("div");
+      cup.style.position = "absolute";
+      cup.style.width = "120px";
+      cup.style.height = "150px";
+      cup.style.background = "linear-gradient(135deg, #8B4513, #A0522D)";
+      cup.style.borderRadius = "60px 60px 10px 10px";
+      cup.style.left = window.innerWidth / 2 - 180 + i * 120 + "px";
+      cup.style.top = window.innerHeight / 2 + "px";
+      cup.style.cursor = "not-allowed";
+      cup.style.border = "3px solid #654321";
+      cup.style.boxShadow = "0 10px 20px rgba(0, 0, 0, 0.5)";
+      cup.style.transition = "transform 0.3s ease";
+      cup.dataset.cupIndex = i;
+
+      this.gameContainer.appendChild(cup);
+      this.cupGame.cups.push(cup);
+    }
+
+    // Show Jim under middle cup briefly
+    const jimUnderCup = document.createElement("img");
+    jimUnderCup.src = "jim1.png";
+    jimUnderCup.style.position = "absolute";
+    jimUnderCup.style.width = "60px";
+    jimUnderCup.style.height = "60px";
+    jimUnderCup.style.left = window.innerWidth / 2 - 30 + "px";
+    jimUnderCup.style.top = window.innerHeight / 2 + 100 + "px";
+    jimUnderCup.style.zIndex = "50";
+    this.gameContainer.appendChild(jimUnderCup);
+
+    // Show initial dialogue
+    this.dialogueText.textContent = "🎪 Catch me if you can!";
+
+    // After 2 seconds, hide Jim and make cups clickable
+    setTimeout(() => {
+      jimUnderCup.remove();
+      this.dialogueText.textContent =
+        "🎪 I'm under one of these cups! Pick one!";
+
+      // Make cups clickable
+      this.cupGame.gameActive = true;
+      this.cupGame.cups.forEach((cup) => {
+        cup.style.cursor = "pointer";
+        cup.addEventListener("click", () => this.handleCupClick());
+        cup.addEventListener("mouseenter", () => {
+          if (this.cupGame.gameActive) {
+            cup.style.transform = "scale(1.05)";
+          }
+        });
+        cup.addEventListener("mouseleave", () => {
+          cup.style.transform = "scale(1)";
+        });
+      });
+    }, 2000);
+  }
+
+  handleCupClick() {
+    if (!this.cupGame.gameActive) return;
+
+    this.cupGame.gameActive = false;
+
+    // Show all cups are empty
+    this.dialogueText.textContent = "😈 HAHAHAHA! I wasn't under ANY cup!";
+
+    // Animate cups lifting to show they're empty
+    this.cupGame.cups.forEach((cup, index) => {
+      setTimeout(() => {
+        cup.style.transform = "translateY(-50px)";
+        cup.style.cursor = "default";
+      }, index * 200);
+    });
+
+    // After revealing all cups, bring Jim back to center
+    setTimeout(() => {
+      // Clean up cups
+      this.cupGame.cups.forEach((cup) => cup.remove());
+      this.cupGame.cups = [];
+
+      // Restore Jim to center and make game continue
+      this.jimImage.style.display = "block";
+      this.jimImage.style.position = "static";
+      this.jimImage.style.left = "";
+      this.jimImage.style.top = "";
+      this.jimImage.style.opacity = "1";
+
+      // Continue to next phase or trigger particle show
+      if (this.currentJim >= this.maxJim) {
+        this.startParticleShow();
+      } else {
+        this.currentJim++;
+        this.updateDisplay();
+        this.updateProgressBar();
+      }
+    }, 3000);
+  }
+
+  createParticle() {
+    const particle = document.createElement("img");
+    particle.classList.add("particle", "rainbow-effect");
+    particle.src = Math.random() > 0.5 ? "thumbs.png" : "hand.png";
+
+    particle.style.left = Math.random() * window.innerWidth + "px";
+    particle.style.top = "-50px";
+    particle.style.width = 30 + Math.random() * 50 + "px";
+    particle.style.height = "auto";
+    particle.style.position = "absolute";
+    particle.style.zIndex = "1000";
+
+    this.particleContainer.appendChild(particle);
+
+    let yPos = -50;
+    let xVel = (Math.random() - 0.5) * 8;
+    let yVel = 2 + Math.random() * 4;
+    let rotation = Math.random() * 360;
+    let rotVel = (Math.random() - 0.5) * 20;
+
+    const animateParticle = () => {
+      yPos += yVel;
+      yVel += 0.2; // gravity
+      rotation += rotVel;
+
+      particle.style.top = yPos + "px";
+      particle.style.left = parseFloat(particle.style.left) + xVel + "px";
+      particle.style.transform = `rotate(${rotation}deg) scale(${
+        1 + Math.sin(yPos * 0.01) * 0.2
+      })`;
+
+      if (yPos < window.innerHeight + 100) {
+        requestAnimationFrame(animateParticle);
+      } else {
+        particle.remove();
+      }
+    };
+
+    requestAnimationFrame(animateParticle);
+  }
+
+  createFireworkBurst() {
+    const centerX = Math.random() * window.innerWidth;
+    const centerY = Math.random() * (window.innerHeight * 0.6);
+
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const burst = document.createElement("div");
+      burst.style.position = "absolute";
+      burst.style.left = centerX + "px";
+      burst.style.top = centerY + "px";
+      burst.style.width = "4px";
+      burst.style.height = "4px";
+      burst.style.background = `hsl(${Math.random() * 360}, 100%, 70%)`;
+      burst.style.borderRadius = "50%";
+      burst.style.pointerEvents = "none";
+
+      document.body.appendChild(burst);
+
+      let distance = 0;
+      const animateBurst = () => {
+        distance += 5;
+        const x = centerX + Math.cos(angle) * distance;
+        const y = centerY + Math.sin(angle) * distance;
+
+        burst.style.left = x + "px";
+        burst.style.top = y + "px";
+        burst.style.opacity = Math.max(0, 1 - distance / 200);
+
+        if (distance < 200) {
+          requestAnimationFrame(animateBurst);
+        } else {
+          burst.remove();
+        }
+      };
+
+      requestAnimationFrame(animateBurst);
+    }
+  }
+
+  resetGame() {
+    // Clear particles
+    this.particleContainer.innerHTML = "";
+
+    // Reset game state
+    this.currentJim = 1;
+    this.hp = 0;
+    this.maxHp = 0;
+    this.clicksRequired = 1;
+    this.currentClicks = 0;
+    this.comboCount = 0;
+    this.beetleClickCount = 0;
+    this.jim8ClickCount = 0;
+    this.chickenDirection = 0;
+    this.chickenPosition = 0;
+    this.chickenSpeed = 0;
+    this.minions = [];
+    this.defeatedMinions = 0;
+    this.goldEarned = 0;
+    this.cupGame = { cups: [], correctCup: -1, gameActive: false };
+    this.stopMovement();
+
+    // Clean up any remaining elements
+    const finishBtn = document.getElementById("finish-btn");
+    const loseBtn = document.getElementById("lose-btn");
+    const goldCounter = document.getElementById("gold-counter");
+    if (finishBtn) finishBtn.remove();
+    if (loseBtn) loseBtn.remove();
+    if (goldCounter) goldCounter.remove();
+    this.cleanupMinions();
+
+    // Clean up any remaining cups
+    this.cupGame.cups.forEach((cup) => cup.remove());
+    this.cupGame = { cups: [], correctCup: -1, gameActive: false };
+
+    // Reset display
+    this.jimImage.style.display = "block";
+    this.jimImage.style.position = "static";
+    this.jimImage.className = "jim-image happy-jim";
+    this.gameContainer.classList.remove("screen-shake");
+    this.comboCounter.style.display = "none";
+    this.progressBar.classList.remove("fade-out");
+
+    this.updateDisplay();
+    this.updateProgressBar();
+
+    // Welcome back sparkle
+    setTimeout(() => {
+      this.createSparkle(this.jimImage.getBoundingClientRect());
+    }, 500);
+  }
+}
+
+// Start the game when page loads
+window.addEventListener("load", () => {
+  new JimGame();
 });
